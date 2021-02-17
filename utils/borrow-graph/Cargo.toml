@@ -1,0 +1,9 @@
+[package]
+name = "borrow-graph"
+version = "0.0.1"
+authors = ["Wei Tang <wei@that.world>"]
+license = "Apache-2.0"
+edition = "2018"
+
+[dependencies]
+mirai-annotations = "1.10.1"

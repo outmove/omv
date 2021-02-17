@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "vm",
+    "vm/core",
+    "vm/natives",
+    "vm/types",
+    "vm/bytecode-verifier",
+    "utils/borrow-graph",
+    "common",
+]
