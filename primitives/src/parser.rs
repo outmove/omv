@@ -8,7 +8,8 @@ use super::{
     transaction_argument::TransactionArgument,
 };
 use anyhow::{bail, Result};
-use std::iter::Peekable;
+use core::iter::Peekable;
+use alloc::{vec::Vec, boxed::Box, string::String};
 
 #[derive(Eq, PartialEq, Debug)]
 enum Token {
@@ -228,7 +229,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     ) -> Result<Vec<R>>
     where
         F: Fn(&mut Self) -> Result<R>,
-        R: std::fmt::Debug,
+        R: core::fmt::Debug,
     {
         let mut v = vec![];
         if !(self.peek() == Some(&end_token)) {
@@ -298,15 +299,15 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
     fn parse_transaction_argument(&mut self) -> Result<TransactionArgument> {
         Ok(match self.next()? {
-            Token::U8(s) => TransactionArgument::U8(s.parse()?),
-            Token::U64(s) => TransactionArgument::U64(s.parse()?),
-            Token::U128(s) => TransactionArgument::U128(s.parse()?),
+            Token::U8(s) => TransactionArgument::U8(s.parse().map_err(anyhow::Error::msg)?),
+            Token::U64(s) => TransactionArgument::U64(s.parse().map_err(anyhow::Error::msg)?),
+            Token::U128(s) => TransactionArgument::U128(s.parse().map_err(anyhow::Error::msg)?),
             Token::True => TransactionArgument::Bool(true),
             Token::False => TransactionArgument::Bool(false),
             Token::Address(addr) => {
-                TransactionArgument::Address(AccountAddress::from_hex_literal(&addr)?)
+                TransactionArgument::Address(AccountAddress::from_hex_literal(&addr).map_err(anyhow::Error::msg)?)
             }
-            Token::Bytes(s) => TransactionArgument::U8Vector(hex::decode(s)?),
+            Token::Bytes(s) => TransactionArgument::U8Vector(hex::decode(s).map_err(anyhow::Error::msg)?),
             tok => bail!("unexpected token {:?}, expected transaction argument", tok),
         })
     }
@@ -314,7 +315,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
 fn parse<F, T>(s: &str, f: F) -> Result<T>
 where
-    F: Fn(&mut Parser<std::vec::IntoIter<Token>>) -> Result<T>,
+    F: Fn(&mut Parser<alloc::vec::IntoIter<Token>>) -> Result<T>,
 {
     let mut tokens: Vec<_> = tokenize(s)?
         .into_iter()

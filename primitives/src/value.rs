@@ -8,7 +8,8 @@ use serde::{
     ser::{SerializeSeq, SerializeTuple},
     Deserialize, Serialize,
 };
-use std::fmt::{self, Debug};
+use core::fmt::{self, Debug};
+use alloc::{vec::Vec, boxed::Box};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MoveStruct(Vec<MoveValue>);
@@ -42,7 +43,7 @@ pub enum MoveTypeLayout {
 
 impl MoveValue {
     pub fn simple_deserialize(blob: &[u8], ty: &MoveTypeLayout) -> AResult<Self> {
-        Ok(bcs::from_bytes_seed(ty, blob)?)
+        Ok(bcs::from_bytes_seed(ty, blob).map_err(anyhow::Error::msg)?)
     }
 
     pub fn simple_serialize(&self) -> Option<Vec<u8>> {
@@ -72,7 +73,7 @@ impl MoveStruct {
     }
 
     pub fn simple_deserialize(blob: &[u8], ty: &MoveStructLayout) -> AResult<Self> {
-        Ok(bcs::from_bytes_seed(ty, blob)?)
+        Ok(bcs::from_bytes_seed(ty, blob).map_err(anyhow::Error::msg)?)
     }
 
     pub fn fields(&self) -> &[MoveValue] {

@@ -5,6 +5,7 @@ use super::{
     identifier::{IdentStr, Identifier},
     language_storage::{StructTag, TypeTag},
 };
+use alloc::{vec::Vec, borrow::ToOwned};
 
 pub trait MoveResource {
     const MODULE_NAME: &'static str;

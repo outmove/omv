@@ -29,7 +29,8 @@
 use anyhow::{bail, Result};
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, fmt, ops::Deref};
+use core::{borrow::Borrow, fmt, ops::Deref};
+use alloc::{vec::Vec, borrow::ToOwned, string::String, boxed::Box};
 
 /// Return true if this character can appear in a Move identifier.
 ///
@@ -87,7 +88,7 @@ impl Identifier {
 
     /// Converts a vector of bytes to an `Identifier`.
     pub fn from_utf8(vec: Vec<u8>) -> Result<Self> {
-        let s = String::from_utf8(vec)?;
+        let s = String::from_utf8(vec).map_err(anyhow::Error::msg)?;
         Self::new(s)
     }
 

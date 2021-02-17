@@ -41,12 +41,12 @@ use crate::{
 };
 use primitive_types::H256;
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, fmt};
+use core::{convert::TryFrom, fmt};
+use alloc::{vec::Vec, string::String};
 
 #[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Ord, PartialOrd)]
 pub struct AccessPath {
     pub address: AccountAddress,
-    #[serde(with = "serde_bytes")]
     pub path: Vec<u8>,
 }
 
@@ -101,7 +101,7 @@ impl AccessPath {
 }
 
 impl fmt::Debug for AccessPath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "AccessPath {{ address: {:x}, path: {} }}",

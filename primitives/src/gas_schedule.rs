@@ -6,12 +6,15 @@
 //! It is important to note that the cost schedule defined in this file does not track hashing
 //! operations or other native operations; the cost of each native operation will be returned by the
 //! native function itself.
+
+#[cfg(feature = "std")]
 use mirai_annotations::*;
 use serde::{Deserialize, Serialize};
-use std::{
+use core::{
     ops::{Add, Div, Mul, Sub},
     u64,
 };
+use alloc::vec::Vec;
 
 /// The underlying carrier for gas-related units and costs. Data with this type should not be
 /// manipulated directly, but instead be manipulated using the newtype wrappers defined around
@@ -140,7 +143,7 @@ pub const ONE_GAS_UNIT: InternalGasUnits<GasCarrier> = InternalGasUnits(1);
 
 /// The maximum size representable by AbstractMemorySize
 pub const MAX_ABSTRACT_MEMORY_SIZE: AbstractMemorySize<GasCarrier> =
-    AbstractMemorySize(std::u64::MAX);
+    AbstractMemorySize(core::u64::MAX);
 
 /// The size in bytes for a non-string or address constant on the stack
 pub const CONST_SIZE: AbstractMemorySize<GasCarrier> = AbstractMemorySize(16);
@@ -241,12 +244,14 @@ pub struct CostTable {
 impl CostTable {
     #[inline]
     pub fn instruction_cost(&self, instr_index: u8) -> &GasCost {
+        #[cfg(feature = "std")]
         precondition!(instr_index > 0 && instr_index <= (self.instruction_table.len() as u8));
         &self.instruction_table[(instr_index - 1) as usize]
     }
 
     #[inline]
     pub fn native_cost(&self, native_index: u8) -> &GasCost {
+        #[cfg(feature = "std")]
         precondition!(native_index < (self.native_table.len() as u8));
         &self.native_table[native_index as usize]
     }

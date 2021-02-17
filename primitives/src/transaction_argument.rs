@@ -3,7 +3,8 @@
 
 use super::{account_address::AccountAddress, value::MoveValue};
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use core::fmt;
+use alloc::vec::Vec;
 
 #[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TransactionArgument {

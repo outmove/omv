@@ -6,7 +6,8 @@ use super::{
     identifier::{IdentStr, Identifier},
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use core::fmt::{Display, Formatter};
+use alloc::{vec::Vec, boxed::Box, borrow::ToOwned};
 
 pub const CODE_TAG: u8 = 0;
 pub const RESOURCE_TAG: u8 = 1;
@@ -132,13 +133,13 @@ impl ModuleId {
 }
 
 impl Display for ModuleId {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         write!(f, "{}::{}", self.address, self.name)
     }
 }
 
 impl Display for StructTag {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         write!(
             f,
             "0x{}::{}::{}",
@@ -159,7 +160,7 @@ impl Display for StructTag {
 }
 
 impl Display for TypeTag {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         match self {
             TypeTag::Struct(s) => write!(f, "{}", s),
             TypeTag::Vector(ty) => write!(f, "Vector<{}>", ty),

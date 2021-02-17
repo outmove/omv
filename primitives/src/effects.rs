@@ -7,7 +7,7 @@ use super::{
     language_storage::{ModuleId, StructTag, TypeTag},
 };
 use anyhow::{format_err, Error, Result};
-use std::collections::btree_map::{self, BTreeMap};
+use alloc::{vec::Vec, collections::btree_map::{self, BTreeMap}};
 
 /// A collection of changes to modules and resources under a Move account.
 #[derive(Debug, Clone)]

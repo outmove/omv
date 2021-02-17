@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::{ensure, Error, Result};
+#[cfg(feature = "std")]
 use rand::{rngs::OsRng, Rng};
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
-use std::{convert::TryFrom, fmt, str::FromStr};
+use core::{convert::TryFrom, fmt};
+use alloc::{vec::Vec, str::FromStr, string::{String, ToString}};
 
 /// A struct that represents an account address.
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
@@ -21,6 +23,7 @@ impl AccountAddress {
     /// Hex address: 0x0
     pub const ZERO: Self = Self([0u8; Self::LENGTH]);
 
+    #[cfg(feature = "std")]
     pub fn random() -> Self {
         let mut rng = OsRng;
         let buf: [u8; Self::LENGTH] = rng.gen();
@@ -52,9 +55,9 @@ impl AccountAddress {
             let mut hex_str = String::with_capacity(hex_len + 1);
             hex_str.push('0');
             hex_str.push_str(&literal[2..]);
-            hex::decode(&hex_str)?
+            hex::decode(&hex_str).map_err(anyhow::Error::msg)?
         } else {
-            hex::decode(&literal[2..])?
+            hex::decode(&literal[2..]).map_err(anyhow::Error::msg)?
         };
 
         let len = result.len();
@@ -78,7 +81,7 @@ impl AsRef<[u8]> for AccountAddress {
 }
 
 impl fmt::Display for AccountAddress {
-    fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Forward to the UpperHex impl with a "0x" prepended (the # flag).
         write!(f, "{:#X}", self)
     }
@@ -171,7 +174,7 @@ impl TryFrom<String> for AccountAddress {
     type Error = Error;
 
     fn try_from(s: String) -> Result<AccountAddress> {
-        let bytes_out = ::hex::decode(s)?;
+        let bytes_out = ::hex::decode(s).map_err(anyhow::Error::msg)?;
         AccountAddress::try_from(bytes_out.as_slice())
     }
 }
@@ -180,7 +183,7 @@ impl FromStr for AccountAddress {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let bytes_out = ::hex::decode(s)?;
+        let bytes_out = ::hex::decode(s).map_err(anyhow::Error::msg)?;
         AccountAddress::try_from(bytes_out.as_slice())
     }
 }
@@ -190,7 +193,7 @@ impl FromStr for AccountAddress {
 struct DeserializeValue([u8; AccountAddress::LENGTH]);
 
 impl<'de> Deserialize<'de> for AccountAddress {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -205,7 +208,7 @@ impl<'de> Deserialize<'de> for AccountAddress {
 }
 
 impl Serialize for AccountAddress {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> core::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
