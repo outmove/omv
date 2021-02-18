@@ -6,11 +6,12 @@
 //! It is important to note that the cost schedule defined in this file does not track hashing
 //! operations or other native operations; the cost of each native operation will be returned by the
 //! native function itself.
+#[cfg(feature = "std")]
 use mirai_annotations::*;
 use omv_primitives::{
     gas_schedule::{
         AbstractMemorySize, CostTable, GasAlgebra, GasCarrier, GasConstants, GasCost, GasUnits,
-        InternalGasUnits, MAX_TRANSACTION_SIZE_IN_BYTES,
+        InternalGasUnits,
     },
     vm_status::StatusCode,
 };
@@ -23,6 +24,7 @@ use omv_core::{
     },
     file_format_common::{instruction_key, Opcodes},
 };
+use alloc::vec::Vec;
 
 /// The Move VM implementation for gas charging.
 ///
@@ -98,7 +100,7 @@ impl<'a> CostStrategy<'a> {
         size: AbstractMemorySize<GasCarrier>,
     ) -> PartialVMResult<()> {
         // Make sure that the size is always non-zero
-        let size = size.map(|x| std::cmp::max(1, x));
+        let size = size.map(|x| core::cmp::max(1, x));
         debug_assert!(size.get() > 0);
         self.deduct_gas(
             self.cost_table
@@ -269,7 +271,9 @@ pub fn calculate_intrinsic_gas(
     transaction_size: AbstractMemorySize<GasCarrier>,
     gas_constants: &GasConstants,
 ) -> InternalGasUnits<GasCarrier> {
-    precondition!(transaction_size.get() <= MAX_TRANSACTION_SIZE_IN_BYTES as GasCarrier);
+    #[cfg(feature = "std")]
+    precondition!(transaction_size.get() <= omv_primitives::gas_schedule::MAX_TRANSACTION_SIZE_IN_BYTES as GasCarrier);
+
     let min_transaction_fee = gas_constants.min_transaction_gas_units;
 
     if transaction_size.get() > gas_constants.large_transaction_cutoff.get() {

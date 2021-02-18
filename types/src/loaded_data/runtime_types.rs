@@ -6,6 +6,7 @@ use omv_core::{
     errors::{PartialVMError, PartialVMResult},
     file_format::{Kind, StructDefinitionIndex},
 };
+use alloc::{vec::Vec, boxed::Box};
 
 pub const TYPE_DEPTH_MAX: usize = 256;
 

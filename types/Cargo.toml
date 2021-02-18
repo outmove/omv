@@ -11,7 +11,7 @@ sha2 = { version = "0.9.3", default-features = false }
 serde = { version = "1.0.123", features = ["derive", "rc"], default-features = false }
 smallvec = "1.6.1"
 
-omv-serialize = { version = "0.1.2", path = "../serialize", default-features = false }
+bcs = { package = "omv-serialize", version = "0.1.2", path = "../serialize", default-features = false }
 omv-primitives = { version = "0.1.0", path = "../primitives", default-features = false }
 omv-core = { version = "0.1.0", path = "../core", default-features = false }
 
@@ -21,7 +21,7 @@ std = [
     "mirai-annotations",
     "sha2/std",
     "serde/std",
-    "omv-serialize/std",
+    "bcs/std",
     "omv-primitives/std",
     "omv-core/std",
 ]

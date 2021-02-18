@@ -7,6 +7,7 @@ use crate::{
 };
 use omv_primitives::{account_address::AccountAddress, language_storage::ModuleId};
 use omv_core::errors::{PartialVMResult, VMResult};
+use alloc::vec::Vec;
 
 /// Provide an implementation for bytecodes related to data with a given data store.
 ///

@@ -22,8 +22,9 @@ use omv_primitives::{
     value::MoveTypeLayout,
 };
 use smallvec::SmallVec;
-use std::fmt::Write;
+use core::fmt::Write;
 use omv_core::errors::PartialVMResult;
+use alloc::vec::Vec;
 
 pub use omv_primitives::vm_status::StatusCode;
 pub use omv_core::errors::PartialVMError;
@@ -96,7 +97,7 @@ pub fn native_gas(
     size: usize,
 ) -> InternalGasUnits<GasCarrier> {
     let gas_amt = table.native_cost(key as u8);
-    let memory_size = AbstractMemorySize::new(std::cmp::max(1, size) as GasCarrier);
+    let memory_size = AbstractMemorySize::new(core::cmp::max(1, size) as GasCarrier);
     debug_assert!(memory_size.get() > 0);
     gas_amt.total().mul(memory_size)
 }
