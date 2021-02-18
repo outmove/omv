@@ -6,8 +6,8 @@ use omv_types::{
     natives::function::{NativeContext, NativeResult},
     values::Value,
 };
-use std::collections::VecDeque;
 use omv_core::errors::PartialVMResult;
+use alloc::{vec::Vec, collections::VecDeque};
 
 pub fn native_ed25519_publickey_validation(
     _context: &impl NativeContext,

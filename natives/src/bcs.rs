@@ -9,8 +9,8 @@ use omv_types::{
     values::{values_impl::Reference, Value},
 };
 use smallvec::smallvec;
-use std::collections::VecDeque;
 use omv_core::errors::PartialVMResult;
+use alloc::{vec::Vec, collections::VecDeque};
 
 /// Rust implementation of Move's `native public fun to_bytes<T>(&T): vector<u8>`
 pub fn native_to_bytes(

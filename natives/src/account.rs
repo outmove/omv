@@ -9,8 +9,8 @@ use omv_types::{
     values::Value,
 };
 use smallvec::smallvec;
-use std::collections::VecDeque;
 use omv_core::errors::PartialVMResult;
+use alloc::{vec::Vec, collections::VecDeque};
 
 pub fn native_create_signer(
     context: &mut impl NativeContext,

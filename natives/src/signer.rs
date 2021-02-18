@@ -8,8 +8,8 @@ use omv_types::{
     values::{values_impl::SignerRef, Value},
 };
 use smallvec::smallvec;
-use std::collections::VecDeque;
 use omv_core::errors::PartialVMResult;
+use alloc::{vec::Vec, collections::VecDeque};
 
 pub fn native_borrow_address(
     context: &impl NativeContext,

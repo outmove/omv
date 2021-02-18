@@ -9,8 +9,8 @@ use omv_types::{
     values::{Value, Vector, VectorRef},
 };
 use smallvec::smallvec;
-use std::collections::VecDeque;
 use omv_core::errors::PartialVMResult;
+use alloc::{vec::Vec, collections::VecDeque};
 
 pub fn native_empty(
     context: &impl NativeContext,

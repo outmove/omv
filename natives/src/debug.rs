@@ -10,8 +10,8 @@ use omv_types::{
     values::Value,
 };
 use smallvec::smallvec;
-use std::collections::VecDeque;
 use omv_core::errors::PartialVMResult;
+use alloc::{vec::Vec, collections::VecDeque};
 
 #[allow(unused_mut)]
 #[allow(unused_variables)]
