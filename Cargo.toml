@@ -7,11 +7,21 @@ description = "The virtual machine for Outmove."
 license = "Apache-2.0"
 
 [dependencies]
-omv-core = { version = "0.1.0", path = "core" }
-omv-types = { version = "0.1.0", path = "types" }
-omv-natives = { version = "0.1.0", path = "natives" }
-omv-bytecode-verifier = { version = "0.1.0", path = "bytecode-verifier" }
-omv-runtime = { version = "0.1.0", path = "runtime" }
+omv-core = { version = "0.1.0", path = "core", default-features = false }
+omv-types = { version = "0.1.0", path = "types", default-features = false }
+omv-natives = { version = "0.1.0", path = "natives", default-features = false }
+omv-bytecode-verifier = { version = "0.1.0", path = "bytecode-verifier", default-features = false }
+omv-runtime = { version = "0.1.0", path = "runtime", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "omv-core/std",
+    "omv-types/std",
+    "omv-natives/std",
+    "omv-bytecode-verifier/std",
+    "omv-runtime/std",
+]
 
 [workspace]
 members = [
