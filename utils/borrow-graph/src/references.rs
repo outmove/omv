@@ -5,12 +5,12 @@ use crate::{
     paths::{self, Path},
     shared::*,
 };
-use std::{
+use core::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
     fmt,
     fmt::Debug,
 };
+use alloc::collections::{BTreeMap, BTreeSet};
 
 //**************************************************************************************************
 // Definitions

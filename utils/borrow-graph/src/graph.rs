@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    paths::{self, Path, PathSlice},
+    paths::{self, Path},
     references::*,
 };
+#[cfg(feature = "std")]
 use mirai_annotations::{debug_checked_postcondition, debug_checked_precondition};
-use std::collections::{BTreeMap, BTreeSet};
+use alloc::{vec::Vec, collections::{BTreeMap, BTreeSet}};
 
 //**************************************************************************************************
 // Definitions
@@ -166,6 +167,7 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
     }
 
     fn factor(&mut self, parent_id: RefID, loc: Loc, path: Path<Lbl>, intermediate_id: RefID) {
+        #[cfg(feature = "std")]
         debug_checked_precondition!(self.check_invariant());
         let parent = self.0.get_mut(&parent_id).unwrap();
         let mut needs_factored = vec![];
@@ -214,6 +216,8 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
             path,
             intermediate_id,
         );
+
+        #[cfg(feature = "std")]
         debug_checked_postcondition!(self.check_invariant());
     }
 
@@ -225,6 +229,7 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
     /// Fixes any transitive borrows, so if `parent` borrowed by `id` borrowed by `child`
     /// After the release, `parent` borrowed by `child`
     pub fn release(&mut self, id: RefID) {
+        #[cfg(feature = "std")]
         debug_checked_precondition!(self.check_invariant());
         let Ref {
             borrowed_by,
@@ -251,6 +256,8 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
             let child = self.0.get_mut(&child_ref_id).unwrap();
             child.borrows_from.remove(&id);
         }
+
+        #[cfg(feature = "std")]
         debug_checked_postcondition!(self.check_invariant());
     }
 
@@ -324,7 +331,9 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
     /// Utility for remapping the reference ids according the `id_map` provided
     /// If it is not in the map, the id remains the same
     pub fn remap_refs(&mut self, id_map: &BTreeMap<RefID, RefID>) {
+        #[cfg(feature = "std")]
         debug_checked_precondition!(self.check_invariant());
+
         for info in self.0.values_mut() {
             info.remap_refs(id_map);
         }
@@ -333,6 +342,8 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
                 self.0.insert(*new, info);
             }
         }
+
+        #[cfg(feature = "std")]
         debug_checked_postcondition!(self.check_invariant());
     }
 
@@ -344,9 +355,13 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
     /// It adds only 'unmatched' edges from other into self, i.e. for any edge in other, if there
     /// is an edge in self that is <= than that edge, it is not added.
     pub fn join(&self, other: &Self) -> Self {
+        #[cfg(feature = "std")]
         debug_checked_precondition!(self.check_invariant());
+        #[cfg(feature = "std")]
         debug_checked_precondition!(other.check_invariant());
+        #[cfg(feature = "std")]
         debug_checked_precondition!(self.0.keys().all(|id| other.0.contains_key(id)));
+        #[cfg(feature = "std")]
         debug_checked_precondition!(other.0.keys().all(|id| self.0.contains_key(id)));
 
         let mut joined = self.clone();
@@ -357,7 +372,10 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
                 }
             }
         }
+
+        #[cfg(feature = "std")]
         debug_checked_postcondition!(joined.check_invariant());
+        
         joined
     }
 
@@ -365,10 +383,12 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
     // Consistency/Invariants
     //**********************************************************************************************
 
+    #[cfg(feature = "std")]
     fn check_invariant(&self) -> bool {
         self.id_consistency() && self.edge_consistency() && self.no_self_loops()
     }
 
+    #[cfg(feature = "std")]
     /// Checks at all ids in edges are contained in the borrow map itself, i.e. that each id
     /// corresponds to a reference
     fn id_consistency(&self) -> bool {
@@ -378,6 +398,7 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
         })
     }
 
+    #[cfg(feature = "std")]
     /// Checks that for every edge in borrowed_by there is a flipped edge in borrows_from
     /// And vice versa
     //// i.e. verifies the "back edges" in the borrow graph
@@ -397,6 +418,7 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
         })
     }
 
+    #[cfg(feature = "std")]
     /// Checks that no reference borrows from itself
     fn no_self_loops(&self) -> bool {
         self.0.iter().all(|(id, r)| {
@@ -420,12 +442,13 @@ impl<Loc: Copy, Lbl: Clone + Ord> BorrowGraph<Loc, Lbl> {
     }
 
     /// Prints out a view of the borrow graph
+    #[cfg(feature = "std")]
     #[allow(dead_code)]
     pub fn display(&self)
     where
         Lbl: std::fmt::Display,
     {
-        fn path_to_string<Lbl: std::fmt::Display>(p: &PathSlice<Lbl>) -> String {
+        fn path_to_string<Lbl: std::fmt::Display>(p: &crate::paths::PathSlice<Lbl>) -> String {
             p.iter()
                 .map(|l| l.to_string())
                 .collect::<Vec<_>>()

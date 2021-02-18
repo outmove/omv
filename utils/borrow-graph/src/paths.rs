@@ -1,6 +1,8 @@
 // Copyright (c) The Diem Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use alloc::{vec::Vec, borrow::ToOwned};
+
 pub type PathSlice<Lbl> = [Lbl];
 pub type Path<Lbl> = Vec<Lbl>;
 
