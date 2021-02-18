@@ -9,7 +9,7 @@ edition = "2018"
 fail = { version = "0.4.0", optional = true }
 mirai-annotations = { version = "1.10.1", optional = true }
 once_cell = { version = "1.4.1", default-features = false }
-funty = { version = "=1.1.0" }
+funty = { version = "=1.1.0", default-features = false }
 
 omv-primitives = { version = "0.1.0", path = "../primitives", default-features = false }
 omv-bytecode-verifier = { path = "../bytecode-verifier", version = "0.1.0", default-features = false }
@@ -25,6 +25,7 @@ std = [
     "fail",
     "mirai-annotations",
     "once_cell/std",
+    "funty/std",
     "omv-primitives/std",
     "omv-bytecode-verifier/std",
     "omv-natives/std",
