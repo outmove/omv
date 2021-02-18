@@ -4,8 +4,8 @@
 use crate::{
     logging::{expect_no_verification_errors, LogContext},
     native_functions::NativeFunction,
+    data_cache::{RemoteCache, TransactionDataCache},
 };
-use primitive_types::H256;
 use omv_bytecode_verifier::{
     constants, cyclic_dependencies, dependencies, instantiation_loops::InstantiationLoopChecker,
     script_signature, CodeUnitVerifier, DuplicationChecker, InstructionConsistency,
@@ -16,9 +16,9 @@ use omv_primitives::{
     language_storage::{ModuleId, StructTag, TypeTag},
     value::{MoveStructLayout, MoveTypeLayout},
     vm_status::StatusCode,
+    hash_value::HashValue,
 };
 use omv_types::{
-    data_store::DataStore,
     loaded_data::runtime_types::{StructType, Type},
 };
 use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
@@ -33,7 +33,6 @@ use omv_core::{
     },
     IndexKind,
 };
-use parking_lot::Mutex;
 use sha3::{Sha3_256, Digest};
 
 // A simple cache that offers both a HashMap and a Vector lookup.
@@ -75,7 +74,7 @@ where
 // Script are added in the cache once verified and so getting a script out the cache
 // does not require further verification (except for parameters and type parameters)
 struct ScriptCache {
-    scripts: BinaryCache<H256, Script>,
+    scripts: BinaryCache<HashValue, Script>,
 }
 
 impl ScriptCache {
@@ -85,7 +84,7 @@ impl ScriptCache {
         }
     }
 
-    fn get(&self, hash: &H256) -> Option<(Arc<Function>, Vec<Type>)> {
+    fn get(&self, hash: &HashValue) -> Option<(Arc<Function>, Vec<Type>)> {
         self.scripts
             .get(hash)
             .map(|script| (script.entry_point(), script.parameter_tys.clone()))
@@ -93,7 +92,7 @@ impl ScriptCache {
 
     fn insert(
         &mut self,
-        hash: H256,
+        hash: HashValue,
         script: Script,
     ) -> PartialVMResult<(Arc<Function>, Vec<Type>)> {
         match self.get(&hash) {
@@ -153,7 +152,7 @@ impl ModuleCache {
     fn insert(
         &mut self,
         id: ModuleId,
-        module: CompiledModule,
+        mut module: CompiledModule,
         log_context: &impl LogContext,
     ) -> VMResult<Arc<Module>> {
         if let Some(module) = self.module_at(&id) {
@@ -162,7 +161,7 @@ impl ModuleCache {
 
         // we need this operation to be transactional, if an error occurs we must
         // leave a clean state
-        self.add_module(&module, log_context)?;
+        self.add_module(&mut module, log_context)?;
         match Module::new(module, self) {
             Ok(module) => Ok(Arc::clone(self.modules.insert(id, module))),
             Err((err, module)) => {
@@ -422,18 +421,18 @@ impl ModuleCache {
 // (operating on values on the stack) and when cache needs updating the mutex must be taken.
 // The `pub(crate)` API is what a Loader offers to the runtime.
 pub(crate) struct Loader {
-    scripts: Mutex<ScriptCache>,
-    module_cache: Mutex<ModuleCache>,
-    type_cache: Mutex<TypeCache>,
+    scripts: ScriptCache,
+    module_cache: ModuleCache,
+    type_cache: TypeCache,
 }
 
 impl Loader {
     pub(crate) fn new() -> Self {
         //println!("new loader");
         Self {
-            scripts: Mutex::new(ScriptCache::new()),
-            module_cache: Mutex::new(ModuleCache::new()),
-            type_cache: Mutex::new(TypeCache::new()),
+            scripts: ScriptCache::new(),
+            module_cache: ModuleCache::new(),
+            type_cache: TypeCache::new(),
         }
     }
 
@@ -449,24 +448,25 @@ impl Loader {
     // Entry point for script execution (`MoveVM::execute_script`).
     // Verifies the script if it is not in the cache of scripts loaded.
     // Type parameters are checked as well after every type is loaded.
-    pub(crate) fn load_script(
-        &self,
+    pub(crate) fn load_script<R: RemoteCache>(
+        &mut self,
         script_blob: &[u8],
         ty_args: &[TypeTag],
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<(Arc<Function>, Vec<Type>, Vec<Type>)> {
         // retrieve or load the script
-        let hash_value = H256::from_slice(Sha3_256::digest(script_blob).as_slice());
+        let mut hash_value_raw = [0u8; 32];
+        hash_value_raw.copy_from_slice(Sha3_256::digest(script_blob).as_slice());
+        let hash_value = HashValue::new(hash_value_raw);
 
-        let mut scripts = self.scripts.lock();
-        let (main, parameter_tys) = match scripts.get(&hash_value) {
+        let (main, parameter_tys) = match self.scripts.get(&hash_value).map(|v| v.clone()) {
             Some(main) => main,
             None => {
                 let ver_script =
                     self.deserialize_and_verify_script(script_blob, data_store, log_context)?;
-                let script = Script::new(ver_script, &hash_value, &self.module_cache.lock())?;
-                scripts
+                let script = Script::new(ver_script, &hash_value, &self.module_cache)?;
+                self.scripts
                     .insert(hash_value, script)
                     .map_err(|e| e.finish(Location::Script))?
             }
@@ -487,10 +487,10 @@ impl Loader {
     // So when publishing modules through the dependency DAG it may happen that a different
     // thread had loaded the module after this process fetched it from storage.
     // Caching will take care of that by asking for each dependency module again under lock.
-    fn deserialize_and_verify_script(
-        &self,
+    fn deserialize_and_verify_script<R: RemoteCache>(
+        &mut self,
         script: &[u8],
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<CompiledScript> {
         let script = match CompiledScript::deserialize(script) {
@@ -559,27 +559,26 @@ impl Loader {
     // Entry point for function execution (`MoveVM::execute_function`).
     // Loading verifies the module if it was never loaded.
     // Type parameters are checked as well after every type is loaded.
-    pub(crate) fn load_function(
-        &self,
+    pub(crate) fn load_function<R: RemoteCache>(
+        &mut self,
         function_name: &IdentStr,
         module_id: &ModuleId,
         ty_args: &[TypeTag],
         is_script_execution: bool,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<(Arc<Function>, Vec<Type>, Vec<Type>)> {
         let module = self.load_module_verify_not_missing(module_id, data_store, log_context)?;
         let idx = self
             .module_cache
-            .lock()
             .resolve_function_by_name(function_name, module_id)
             .map_err(|err| err.finish(Location::Undefined))?;
-        let func = self.module_cache.lock().function_at(idx);
+        let func = self.module_cache.function_at(idx);
         let parameter_tys = func
             .parameters
             .0
             .iter()
-            .map(|tok| self.module_cache.lock().make_type(module.module(), tok))
+            .map(|tok| self.module_cache.make_type(module.module(), tok))
             .collect::<PartialVMResult<Vec<_>>>()
             .map_err(|err| err.finish(Location::Undefined))?;
 
@@ -604,10 +603,10 @@ impl Loader {
     // This step performs all verification steps to load the module without loading it.
     // The module is not added to the code cache. It is simply published to the data cache.
     // See `verify_script()` for script verification steps.
-    pub(crate) fn verify_module_verify_no_missing_dependencies(
-        &self,
+    pub(crate) fn verify_module_verify_no_missing_dependencies<R: RemoteCache>(
+        &mut self,
         module: &CompiledModule,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<()> {
         // Performs all verification steps to load the module without loading it, i.e., the new
@@ -617,19 +616,19 @@ impl Loader {
         self.verify_module(module, data_store, true, log_context)
     }
 
-    fn verify_module_expect_no_missing_dependencies(
-        &self,
+    fn verify_module_expect_no_missing_dependencies<R: RemoteCache>(
+        &mut self,
         module: &CompiledModule,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<()> {
         self.verify_module(module, data_store, false, log_context)
     }
 
-    fn verify_module(
-        &self,
+    fn verify_module<R: RemoteCache>(
+        &mut self,
         module: &CompiledModule,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         verify_no_missing_modules: bool,
         log_context: &impl LogContext,
     ) -> VMResult<()> {
@@ -664,9 +663,8 @@ impl Loader {
             .collect();
         dependencies::verify_module(module, imm_deps)?;
 
-        let module_cache = self.module_cache.lock();
         cyclic_dependencies::verify_module(module, |module_id| {
-            module_cache
+            self.module_cache
                 .modules
                 .get(module_id)
                 .ok_or_else(|| PartialVMError::new(StatusCode::MISSING_DEPENDENCY))
@@ -718,10 +716,10 @@ impl Loader {
     // Helpers for loading and verification
     //
 
-    fn load_type(
-        &self,
+    fn load_type<R: RemoteCache>(
+        &mut self,
         type_tag: &TypeTag,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<Type> {
         Ok(match type_tag {
@@ -739,7 +737,6 @@ impl Loader {
                 self.load_module_verify_not_missing(&module_id, data_store, log_context)?;
                 let (idx, struct_type) = self
                     .module_cache
-                    .lock()
                     // GOOD module was loaded above
                     .resolve_struct_by_name(&struct_tag.name, &module_id)
                     .map_err(|e| e.finish(Location::Undefined))?;
@@ -771,19 +768,19 @@ impl Loader {
     // So when publishing modules through the dependency DAG it may happen that a different
     // thread had loaded the module after this process fetched it from storage.
     // Caching will take care of that by asking for each dependency module again under lock.
-    fn load_module(
-        &self,
+    fn load_module<R: RemoteCache>(
+        &mut self,
         id: &ModuleId,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         verify_module_is_not_missing: bool,
         log_context: &impl LogContext,
     ) -> VMResult<Arc<Module>> {
         // kept private to `load_module` to prevent verification errors from leaking
         // and not being marked as invariant violations
-        fn deserialize_and_verify_module(
-            loader: &Loader,
+        fn deserialize_and_verify_module<R: RemoteCache>(
+            loader: &mut Loader,
             bytes: Vec<u8>,
-            data_store: &mut impl DataStore,
+            data_store: &mut TransactionDataCache<R>,
             log_context: &impl LogContext,
         ) -> VMResult<CompiledModule> {
             let module = CompiledModule::deserialize(&bytes).map_err(|_| {
@@ -798,7 +795,7 @@ impl Loader {
             Ok(module)
         }
 
-        if let Some(module) = self.module_cache.lock().module_at(id) {
+        if let Some(module) = self.module_cache.module_at(id) {
             return Ok(module);
         }
 
@@ -815,35 +812,34 @@ impl Loader {
         let module = deserialize_and_verify_module(self, bytes, data_store, log_context)
             .map_err(|err| expect_no_verification_errors(err, log_context))?;
         self.module_cache
-            .lock()
             .insert(id.clone(), module, log_context)
     }
 
     // Returns a verifier error if the module does not exist
-    fn load_module_verify_not_missing(
-        &self,
+    fn load_module_verify_not_missing<R: RemoteCache>(
+        &mut self,
         id: &ModuleId,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<Arc<Module>> {
         self.load_module(id, data_store, true, log_context)
     }
 
     // Expects all modules to be on chain. Gives an invariant violation if it is not found
-    fn load_module_expect_not_missing(
-        &self,
+    fn load_module_expect_not_missing<R: RemoteCache>(
+        &mut self,
         id: &ModuleId,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<Arc<Module>> {
         self.load_module(id, data_store, false, log_context)
     }
 
     // Returns a verifier error if the module does not exist
-    fn load_dependencies_verify_no_missing_dependencies(
-        &self,
+    fn load_dependencies_verify_no_missing_dependencies<R: RemoteCache>(
+        &mut self,
         deps: Vec<ModuleId>,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<Vec<Arc<Module>>> {
         deps.into_iter()
@@ -852,10 +848,10 @@ impl Loader {
     }
 
     // Expects all modules to be on chain. Gives an invariant violation if it is not found
-    fn load_dependencies_expect_no_missing_dependencies(
-        &self,
+    fn load_dependencies_expect_no_missing_dependencies<R: RemoteCache>(
+        &mut self,
         deps: Vec<ModuleId>,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
     ) -> VMResult<Vec<Arc<Module>>> {
         deps.into_iter()
@@ -890,23 +886,21 @@ impl Loader {
     //
 
     fn function_at(&self, idx: usize) -> Arc<Function> {
-        self.module_cache.lock().function_at(idx)
+        self.module_cache.function_at(idx)
     }
 
     fn get_module(&self, idx: &ModuleId) -> Arc<Module> {
         Arc::clone(
             self.module_cache
-                .lock()
                 .modules
                 .get(idx)
                 .expect("ModuleId on Function must exist"),
         )
     }
 
-    fn get_script(&self, hash: &H256) -> Arc<Script> {
+    fn get_script(&self, hash: &HashValue) -> Arc<Script> {
         Arc::clone(
             self.scripts
-                .lock()
                 .scripts
                 .get(hash)
                 .expect("Script hash on Function must exist"),
@@ -915,9 +909,9 @@ impl Loader {
 
     fn is_resource(&self, type_: &Type) -> bool {
         match type_ {
-            Type::Struct(idx) => self.module_cache.lock().struct_at(*idx).is_resource,
+            Type::Struct(idx) => self.module_cache.struct_at(*idx).is_resource,
             Type::StructInstantiation(idx, instantiation) => {
-                if self.module_cache.lock().struct_at(*idx).is_resource {
+                if self.module_cache.struct_at(*idx).is_resource {
                     true
                 } else {
                     for ty in instantiation {
@@ -948,17 +942,17 @@ enum BinaryType {
 // interpreter. It's the only API known to the interpreter and it's tailored to the interpreter
 // needs.
 pub(crate) struct Resolver<'a> {
-    loader: &'a Loader,
+    pub(crate) loader: &'a mut Loader,
     binary: BinaryType,
 }
 
 impl<'a> Resolver<'a> {
-    fn for_module(loader: &'a Loader, module: Arc<Module>) -> Self {
+    fn for_module(loader: &'a mut Loader, module: Arc<Module>) -> Self {
         let binary = BinaryType::Module(module);
         Self { loader, binary }
     }
 
-    fn for_script(loader: &'a Loader, script: Arc<Script>) -> Self {
+    fn for_script(loader: &'a mut Loader, script: Arc<Script>) -> Self {
         let binary = BinaryType::Script(script);
         Self { loader, binary }
     }
@@ -1087,12 +1081,8 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    pub(crate) fn type_to_type_layout(&self, ty: &Type) -> PartialVMResult<MoveTypeLayout> {
+    pub(crate) fn type_to_type_layout(&mut self, ty: &Type) -> PartialVMResult<MoveTypeLayout> {
         self.loader.type_to_type_layout(ty)
-    }
-
-    pub(crate) fn loader(&self) -> &Loader {
-        &self.loader
     }
 }
 
@@ -1352,7 +1342,7 @@ struct Script {
 }
 
 impl Script {
-    fn new(script: CompiledScript, script_hash: &H256, cache: &ModuleCache) -> VMResult<Self> {
+    fn new(script: CompiledScript, script_hash: &HashValue, cache: &ModuleCache) -> VMResult<Self> {
         let mut struct_refs = vec![];
         for struct_handle in script.struct_handles() {
             let struct_name = script.identifier_at(struct_handle.name);
@@ -1465,7 +1455,7 @@ impl Script {
 #[derive(Debug)]
 enum Scope {
     Module(ModuleId),
-    Script(H256),
+    Script(HashValue),
 }
 
 // A runtime function
@@ -1543,7 +1533,7 @@ impl Function {
         self.index
     }
 
-    pub(crate) fn get_resolver<'a>(&self, loader: &'a Loader) -> Resolver<'a> {
+    pub(crate) fn get_resolver<'a>(&self, loader: &'a mut Loader) -> Resolver<'a> {
         match &self.scope {
             Scope::Module(module_id) => {
                 let module = loader.get_module(module_id);
@@ -1687,8 +1677,8 @@ impl TypeCache {
 const VALUE_DEPTH_MAX: usize = 256;
 
 impl Loader {
-    fn struct_gidx_to_type_tag(&self, gidx: usize, ty_args: &[Type]) -> PartialVMResult<StructTag> {
-        if let Some(struct_map) = self.type_cache.lock().structs.get(&gidx) {
+    fn struct_gidx_to_type_tag(&mut self, gidx: usize, ty_args: &[Type]) -> PartialVMResult<StructTag> {
+        if let Some(struct_map) = self.type_cache.structs.get(&gidx) {
             if let Some(struct_info) = struct_map.get(ty_args) {
                 if let Some(struct_tag) = &struct_info.struct_tag {
                     return Ok(struct_tag.clone());
@@ -1700,7 +1690,7 @@ impl Loader {
             .iter()
             .map(|ty| self.type_to_type_tag(ty))
             .collect::<PartialVMResult<Vec<_>>>()?;
-        let struct_type = self.module_cache.lock().struct_at(gidx);
+        let struct_type = self.module_cache.struct_at(gidx);
         let struct_tag = StructTag {
             address: *struct_type.module.address(),
             module: struct_type.module.name().to_owned(),
@@ -1709,7 +1699,6 @@ impl Loader {
         };
 
         self.type_cache
-            .lock()
             .structs
             .entry(gidx)
             .or_insert_with(HashMap::new)
@@ -1720,7 +1709,7 @@ impl Loader {
         Ok(struct_tag)
     }
 
-    fn type_to_type_tag_impl(&self, ty: &Type) -> PartialVMResult<TypeTag> {
+    fn type_to_type_tag_impl(&mut self, ty: &Type) -> PartialVMResult<TypeTag> {
         Ok(match ty {
             Type::Bool => TypeTag::Bool,
             Type::U8 => TypeTag::U8,
@@ -1743,12 +1732,12 @@ impl Loader {
     }
 
     fn struct_gidx_to_type_layout(
-        &self,
+        &mut self,
         gidx: usize,
         ty_args: &[Type],
         depth: usize,
     ) -> PartialVMResult<MoveStructLayout> {
-        if let Some(struct_map) = self.type_cache.lock().structs.get(&gidx) {
+        if let Some(struct_map) = self.type_cache.structs.get(&gidx) {
             if let Some(struct_info) = struct_map.get(ty_args) {
                 if let Some(layout) = &struct_info.struct_layout {
                     return Ok(layout.clone());
@@ -1756,7 +1745,7 @@ impl Loader {
             }
         }
 
-        let struct_type = self.module_cache.lock().struct_at(gidx);
+        let struct_type = self.module_cache.struct_at(gidx);
         let field_tys = struct_type
             .fields
             .iter()
@@ -1769,7 +1758,6 @@ impl Loader {
         let struct_layout = MoveStructLayout::new(field_layouts);
 
         self.type_cache
-            .lock()
             .structs
             .entry(gidx)
             .or_insert_with(HashMap::new)
@@ -1780,7 +1768,7 @@ impl Loader {
         Ok(struct_layout)
     }
 
-    fn type_to_type_layout_impl(&self, ty: &Type, depth: usize) -> PartialVMResult<MoveTypeLayout> {
+    fn type_to_type_layout_impl(&mut self, ty: &Type, depth: usize) -> PartialVMResult<MoveTypeLayout> {
         if depth > VALUE_DEPTH_MAX {
             return Err(PartialVMError::new(StatusCode::VM_MAX_VALUE_DEPTH_REACHED));
         }
@@ -1809,10 +1797,10 @@ impl Loader {
         })
     }
 
-    pub(crate) fn type_to_type_tag(&self, ty: &Type) -> PartialVMResult<TypeTag> {
+    pub(crate) fn type_to_type_tag(&mut self, ty: &Type) -> PartialVMResult<TypeTag> {
         self.type_to_type_tag_impl(ty)
     }
-    pub(crate) fn type_to_type_layout(&self, ty: &Type) -> PartialVMResult<MoveTypeLayout> {
+    pub(crate) fn type_to_type_layout(&mut self, ty: &Type) -> PartialVMResult<MoveTypeLayout> {
         self.type_to_type_layout_impl(ty, 1)
     }
 }

@@ -14,3 +14,4 @@ pub mod parser;
 pub mod transaction_argument;
 pub mod value;
 pub mod vm_status;
+pub mod hash_value;

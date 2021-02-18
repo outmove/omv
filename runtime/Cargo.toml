@@ -6,22 +6,32 @@ license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]
-fail = "0.4.0"
-mirai-annotations = "1.10.1"
-once_cell = "1.4.1"
-primitive-types = "0.9.0"
-funty = "=1.1.0"
+fail = { version = "0.4.0", optional = true }
+mirai-annotations = { version = "1.10.1", optional = true }
+once_cell = { version = "1.4.1", default-features = false }
+funty = { version = "=1.1.0" }
 
-omv-primitives = { version = "0.1.0", path = "../primitives" }
-omv-bytecode-verifier = { path = "../bytecode-verifier", version = "0.1.0" }
-omv-natives = { path = "../natives", version = "0.1.0" }
-omv-types = { path = "../types", version = "0.1.0" }
-omv-core = { path = "../core", version = "0.1.0" }
-log = "0.4"
-parking_lot = "0.11"
-sha3 = "0.9"
+omv-primitives = { version = "0.1.0", path = "../primitives", default-features = false }
+omv-bytecode-verifier = { path = "../bytecode-verifier", version = "0.1.0", default-features = false }
+omv-natives = { path = "../natives", version = "0.1.0", default-features = false }
+omv-types = { path = "../types", version = "0.1.0", default-features = false }
+omv-core = { path = "../core", version = "0.1.0", default-features = false }
+log = { version = "0.4", default-features = false }
+sha3 = { version = "0.9", default-features = false }
 
 [features]
-default = []
+default = ["std"]
+std = [
+    "fail",
+    "mirai-annotations",
+    "once_cell/std",
+    "omv-primitives/std",
+    "omv-bytecode-verifier/std",
+    "omv-natives/std",
+    "omv-types/std",
+    "omv-core/std",
+    "log/std",
+    "sha3/std",
+]
 debug_module = ["omv-natives/debug_module"]
 failpoints = ["fail/failpoints"]

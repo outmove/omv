@@ -38,8 +38,8 @@
 use crate::{
     account_address::AccountAddress,
     language_storage::{ModuleId, ResourceKey, StructTag, CODE_TAG, RESOURCE_TAG},
+    hash_value::HashValue,
 };
-use primitive_types::H256;
 use serde::{Deserialize, Serialize};
 use core::{convert::TryFrom, fmt};
 use alloc::{vec::Vec, string::String};
@@ -113,7 +113,7 @@ impl fmt::Debug for AccessPath {
 
 impl fmt::Display for AccessPath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.path.len() < 1 + H256::default().0.len() {
+        if self.path.len() < 1 + HashValue::LENGTH {
             write!(f, "{:?}", self)
         } else {
             write!(f, "AccessPath {{ address: {:x}, ", self.address)?;
@@ -125,12 +125,12 @@ impl fmt::Display for AccessPath {
             write!(
                 f,
                 "hash: {:?}, ",
-                hex::encode(&self.path[1..=H256::default().0.len()])
+                hex::encode(&self.path[1..=HashValue::LENGTH])
             )?;
             write!(
                 f,
                 "suffix: {:?} }} ",
-                String::from_utf8_lossy(&self.path[1 + H256::default().0.len()..])
+                String::from_utf8_lossy(&self.path[1 + HashValue::LENGTH..])
             )
         }
     }

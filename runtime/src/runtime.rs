@@ -16,7 +16,7 @@ use omv_primitives::{
     vm_status::StatusCode,
 };
 use omv_types::{
-    data_store::DataStore, gas_schedule::CostStrategy, loaded_data::runtime_types::Type,
+    gas_schedule::CostStrategy, loaded_data::runtime_types::Type,
     values::Value,
 };
 use omv_core::{
@@ -28,7 +28,7 @@ use omv_core::{
 
 /// An instantiation of the MoveVM.
 pub(crate) struct VMRuntime {
-    loader: Loader,
+    pub(crate) loader: Loader,
 }
 
 // signer helper closure
@@ -55,19 +55,19 @@ impl VMRuntime {
         }
     }
 
-    pub fn new_session<'r, R: RemoteCache>(&self, remote: &'r R) -> Session<'r, '_, R> {
+    pub fn new_session<'r, R: RemoteCache>(&mut self, remote: &'r R) -> Session<'r, '_, R> {
         Session {
             runtime: self,
-            data_cache: TransactionDataCache::new(remote, &self.loader),
+            data_cache: TransactionDataCache::new(remote),
         }
     }
 
     // See Session::publish_module for what contracts to follow.
-    pub(crate) fn publish_module(
-        &self,
+    pub(crate) fn publish_module<R: RemoteCache>(
+        &mut self,
         module: Vec<u8>,
         sender: AccountAddress,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         _cost_strategy: &mut CostStrategy,
         log_context: &impl LogContext,
     ) -> VMResult<()> {
@@ -130,7 +130,7 @@ impl VMRuntime {
         data_store.publish_module(&module_id, module)
     }
 
-    fn deserialize_args(&self, tys: &[Type], args: Vec<Vec<u8>>) -> PartialVMResult<Vec<Value>> {
+    fn deserialize_args(&mut self, tys: &[Type], args: Vec<Vec<u8>>) -> PartialVMResult<Vec<Value>> {
         if tys.len() != args.len() {
             return Err(
                 PartialVMError::new(StatusCode::NUMBER_OF_ARGUMENTS_MISMATCH).with_message(
@@ -188,7 +188,7 @@ impl VMRuntime {
     }
 
     fn create_signers_and_arguments(
-        &self,
+        &mut self,
         tys: &[Type],
         senders: Vec<AccountAddress>,
         args: Vec<Vec<u8>>,
@@ -223,14 +223,14 @@ impl VMRuntime {
     }
 
     // See Session::execute_script for what contracts to follow.
-    pub(crate) fn execute_script(
-        &self,
+    pub(crate) fn execute_script<'a, 'b, R: RemoteCache>(
+        &'a mut self,
         script: Vec<u8>,
         ty_args: Vec<TypeTag>,
         args: Vec<Vec<u8>>,
         senders: Vec<AccountAddress>,
-        data_store: &mut impl DataStore,
-        cost_strategy: &mut CostStrategy,
+        data_store: &'a mut TransactionDataCache<'b, R>,
+        cost_strategy: &'a mut CostStrategy,
         log_context: &impl LogContext,
     ) -> VMResult<()> {
         // load the script, perform verification
@@ -248,20 +248,20 @@ impl VMRuntime {
             signers_and_args,
             data_store,
             cost_strategy,
-            &self.loader,
+            &mut self.loader,
             log_context,
         )
     }
 
     // See Session::execute_script_function for what contracts to follow.
-    pub(crate) fn execute_script_function(
-        &self,
+    pub(crate) fn execute_script_function<R: RemoteCache>(
+        &mut self,
         module: &ModuleId,
         function_name: &IdentStr,
         ty_args: Vec<TypeTag>,
         args: Vec<Vec<u8>>,
         senders: Vec<AccountAddress>,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         cost_strategy: &mut CostStrategy,
         log_context: &impl LogContext,
     ) -> VMResult<()> {
@@ -285,19 +285,19 @@ impl VMRuntime {
             signers_and_args,
             data_store,
             cost_strategy,
-            &self.loader,
+            &mut self.loader,
             log_context,
         )
     }
 
     // See Session::execute_function for what contracts to follow.
-    pub(crate) fn execute_function(
-        &self,
+    pub(crate) fn execute_function<R: RemoteCache>(
+        &mut self,
         module: &ModuleId,
         function_name: &IdentStr,
         ty_args: Vec<TypeTag>,
         args: Vec<Vec<u8>>,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         cost_strategy: &mut CostStrategy,
         log_context: &impl LogContext,
     ) -> VMResult<()> {
@@ -330,7 +330,7 @@ impl VMRuntime {
             args,
             data_store,
             cost_strategy,
-            &self.loader,
+            &mut self.loader,
             log_context,
         )
     }

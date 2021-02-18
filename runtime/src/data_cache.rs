@@ -12,7 +12,6 @@ use omv_primitives::{
     vm_status::StatusCode,
 };
 use omv_types::{
-    data_store::DataStore,
     loaded_data::runtime_types::Type,
     values::{GlobalValue, GlobalValueEffect, Value},
 };
@@ -74,20 +73,18 @@ impl AccountDataCache {
 /// The Move VM takes a `DataStore` in input and this is the default and correct implementation
 /// for a data store related to a transaction. Clients should create an instance of this type
 /// and pass it to the Move VM.
-pub(crate) struct TransactionDataCache<'r, 'l, R> {
+pub(crate) struct TransactionDataCache<'r, R> {
     remote: &'r R,
-    loader: &'l Loader,
     account_map: BTreeMap<AccountAddress, AccountDataCache>,
     event_data: Vec<(Vec<u8>, u64, Type, MoveTypeLayout, Value)>,
 }
 
-impl<'r, 'l, R: RemoteCache> TransactionDataCache<'r, 'l, R> {
+impl<'r, R: RemoteCache> TransactionDataCache<'r, R> {
     /// Create a `TransactionDataCache` with a `RemoteCache` that provides access to data
     /// not updated in the transaction.
-    pub(crate) fn new(remote: &'r R, loader: &'l Loader) -> Self {
+    pub(crate) fn new(remote: &'r R) -> Self {
         TransactionDataCache {
             remote,
-            loader,
             account_map: BTreeMap::new(),
             event_data: vec![],
         }
@@ -97,7 +94,7 @@ impl<'r, 'l, R: RemoteCache> TransactionDataCache<'r, 'l, R> {
     /// published modules.
     ///
     /// Gives all proper guarantees on lifetime of global data as well.
-    pub(crate) fn into_effects(self) -> PartialVMResult<(ChangeSet, Vec<Event>)> {
+    pub(crate) fn into_effects(self, loader: &mut Loader) -> PartialVMResult<(ChangeSet, Vec<Event>)> {
         let mut account_changesets = BTreeMap::new();
         for (addr, account_data_cache) in self.account_map.into_iter() {
             let mut modules = BTreeMap::new();
@@ -110,14 +107,14 @@ impl<'r, 'l, R: RemoteCache> TransactionDataCache<'r, 'l, R> {
                 match gv.into_effect()? {
                     GlobalValueEffect::None => (),
                     GlobalValueEffect::Deleted => {
-                        let struct_tag = match self.loader.type_to_type_tag(&ty)? {
+                        let struct_tag = match loader.type_to_type_tag(&ty)? {
                             TypeTag::Struct(struct_tag) => struct_tag,
                             _ => return Err(PartialVMError::new(StatusCode::INTERNAL_TYPE_ERROR)),
                         };
                         resources.insert(struct_tag, None);
                     }
                     GlobalValueEffect::Changed(val) => {
-                        let struct_tag = match self.loader.type_to_type_tag(&ty)? {
+                        let struct_tag = match loader.type_to_type_tag(&ty)? {
                             TypeTag::Struct(struct_tag) => struct_tag,
                             _ => return Err(PartialVMError::new(StatusCode::INTERNAL_TYPE_ERROR)),
                         };
@@ -134,7 +131,7 @@ impl<'r, 'l, R: RemoteCache> TransactionDataCache<'r, 'l, R> {
 
         let mut events = vec![];
         for (guid, seq_num, ty, ty_layout, val) in self.event_data {
-            let ty_tag = self.loader.type_to_type_tag(&ty)?;
+            let ty_tag = loader.type_to_type_tag(&ty)?;
             let blob = val
                 .simple_serialize(&ty_layout)
                 .ok_or_else(|| PartialVMError::new(StatusCode::INTERNAL_TYPE_ERROR))?;
@@ -174,21 +171,22 @@ impl<'r, 'l, R: RemoteCache> TransactionDataCache<'r, 'l, R> {
 }
 
 // `DataStore` implementation for the `TransactionDataCache`
-impl<'r, 'l, C: RemoteCache> DataStore for TransactionDataCache<'r, 'l, C> {
+impl<'r, C: RemoteCache> TransactionDataCache<'r, C> {
     // Retrieve data from the local cache or loads it from the remote cache into the local cache.
     // All operations on the global data are based on this API and they all load the data
     // into the cache.
-    fn load_resource(
+    pub fn load_resource(
         &mut self,
         addr: AccountAddress,
         ty: &Type,
+        loader: &mut Loader,
     ) -> PartialVMResult<&mut GlobalValue> {
         let account_cache = Self::get_mut_or_insert_with(&mut self.account_map, &addr, || {
             (addr, AccountDataCache::new())
         });
 
         if !account_cache.data_map.contains_key(ty) {
-            let ty_tag = match self.loader.type_to_type_tag(ty)? {
+            let ty_tag = match loader.type_to_type_tag(ty)? {
                 TypeTag::Struct(s_tag) => s_tag,
                 _ =>
                 // non-struct top-level value; can't happen
@@ -196,7 +194,7 @@ impl<'r, 'l, C: RemoteCache> DataStore for TransactionDataCache<'r, 'l, C> {
                     return Err(PartialVMError::new(StatusCode::INTERNAL_TYPE_ERROR))
                 }
             };
-            let ty_layout = self.loader.type_to_type_layout(ty)?;
+            let ty_layout = loader.type_to_type_layout(ty)?;
 
             let gv = match self.remote.get_resource(&addr, &ty_tag) {
                 Ok(Some(blob)) => {
@@ -239,7 +237,7 @@ impl<'r, 'l, C: RemoteCache> DataStore for TransactionDataCache<'r, 'l, C> {
             .expect("global value must exist"))
     }
 
-    fn load_module(&self, module_id: &ModuleId) -> VMResult<Vec<u8>> {
+    pub fn load_module(&self, module_id: &ModuleId) -> VMResult<Vec<u8>> {
         if let Some(account_cache) = self.account_map.get(module_id.address()) {
             if let Some(blob) = account_cache.module_map.get(module_id.name()) {
                 return Ok(blob.clone());
@@ -265,7 +263,7 @@ impl<'r, 'l, C: RemoteCache> DataStore for TransactionDataCache<'r, 'l, C> {
         }
     }
 
-    fn publish_module(&mut self, module_id: &ModuleId, blob: Vec<u8>) -> VMResult<()> {
+    pub fn publish_module(&mut self, module_id: &ModuleId, blob: Vec<u8>) -> VMResult<()> {
         let account_cache =
             Self::get_mut_or_insert_with(&mut self.account_map, module_id.address(), || {
                 (*module_id.address(), AccountDataCache::new())
@@ -278,7 +276,7 @@ impl<'r, 'l, C: RemoteCache> DataStore for TransactionDataCache<'r, 'l, C> {
         Ok(())
     }
 
-    fn exists_module(&self, module_id: &ModuleId) -> VMResult<bool> {
+    pub fn exists_module(&self, module_id: &ModuleId) -> VMResult<bool> {
         if let Some(account_cache) = self.account_map.get(module_id.address()) {
             if account_cache.module_map.contains_key(module_id.name()) {
                 return Ok(true);
@@ -287,14 +285,15 @@ impl<'r, 'l, C: RemoteCache> DataStore for TransactionDataCache<'r, 'l, C> {
         Ok(self.remote.get_module(module_id)?.is_some())
     }
 
-    fn emit_event(
+    pub fn emit_event(
         &mut self,
         guid: Vec<u8>,
         seq_num: u64,
         ty: Type,
         val: Value,
+        loader: &mut Loader,
     ) -> PartialVMResult<()> {
-        let ty_layout = self.loader.type_to_type_layout(&ty)?;
+        let ty_layout = loader.type_to_type_layout(&ty)?;
         Ok(self.event_data.push((guid, seq_num, ty, ty_layout, val)))
     }
 }

@@ -37,7 +37,7 @@ pub use omv_core::errors::PartialVMError;
 /// runtime.
 pub trait NativeContext {
     /// Prints stack trace.
-    fn print_stack_trace<B: Write>(&self, buf: &mut B) -> PartialVMResult<()>;
+    fn print_stack_trace<B: Write>(&mut self, buf: &mut B) -> PartialVMResult<()>;
     /// Gets cost table ref.
     fn cost_table(&self) -> &CostTable;
     /// Saves contract event. Returns true if successful
@@ -49,7 +49,7 @@ pub trait NativeContext {
         val: Value,
     ) -> PartialVMResult<bool>;
     /// Get the a data layout via the type.
-    fn type_to_type_layout(&self, ty: &Type) -> PartialVMResult<Option<MoveTypeLayout>>;
+    fn type_to_type_layout(&mut self, ty: &Type) -> PartialVMResult<Option<MoveTypeLayout>>;
 }
 
 /// Result of a native function execution requires charges for execution cost.

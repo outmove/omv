@@ -5,6 +5,7 @@ use crate::{
     loader::{Function, Loader, Resolver},
     logging::LogContext,
     native_functions::FunctionContext,
+    data_cache::{TransactionDataCache, RemoteCache},
 };
 use fail::fail_point;
 use omv_primitives::{
@@ -13,7 +14,6 @@ use omv_primitives::{
     vm_status::{StatusCode, StatusType},
 };
 use omv_types::{
-    data_store::DataStore,
     gas_schedule::CostStrategy,
     loaded_data::runtime_types::Type,
     values::{
@@ -68,13 +68,13 @@ pub(crate) struct Interpreter<L: LogContext> {
 impl<L: LogContext> Interpreter<L> {
     /// Entrypoint into the interpreter. All external calls need to be routed through this
     /// function.
-    pub(crate) fn entrypoint(
+    pub(crate) fn entrypoint<'a, 'b, R: RemoteCache>(
         function: Arc<Function>,
         ty_args: Vec<Type>,
         args: Vec<Value>,
-        data_store: &mut impl DataStore,
-        cost_strategy: &mut CostStrategy,
-        loader: &Loader,
+        data_store: &'a mut TransactionDataCache<'b, R>,
+        cost_strategy: &'a mut CostStrategy,
+        loader: &'a mut Loader,
         log_context: &L,
     ) -> VMResult<()> {
         // We count the intrinsic cost of the transaction here, since that needs to also cover the
@@ -94,11 +94,11 @@ impl<L: LogContext> Interpreter<L> {
     }
 
     /// Internal execution entry point.
-    fn execute(
-        &mut self,
-        loader: &Loader,
-        data_store: &mut impl DataStore,
-        cost_strategy: &mut CostStrategy,
+    fn execute<'a, 'b, R: RemoteCache>(
+        &'a mut self,
+        loader: &'a mut Loader,
+        data_store: &'a mut TransactionDataCache<'b, R>,
+        cost_strategy: &'a mut CostStrategy,
         function: Arc<Function>,
         ty_args: Vec<Type>,
         args: Vec<Value>,
@@ -116,11 +116,11 @@ impl<L: LogContext> Interpreter<L> {
     /// at the top of the stack (return). If the call stack is empty execution is completed.
     // REVIEW: create account will be removed in favor of a native function (no opcode) and
     // we can simplify this code quite a bit.
-    fn execute_main(
-        &mut self,
-        loader: &Loader,
-        data_store: &mut impl DataStore,
-        cost_strategy: &mut CostStrategy,
+    fn execute_main<'a, 'b, R: RemoteCache>(
+        &'a mut self,
+        loader: &'a mut Loader,
+        data_store: &'a mut TransactionDataCache<'b, R>,
+        cost_strategy: &'a mut CostStrategy,
         function: Arc<Function>,
         ty_args: Vec<Type>,
         args: Vec<Value>,
@@ -134,10 +134,10 @@ impl<L: LogContext> Interpreter<L> {
 
         let mut current_frame = Frame::new(function, ty_args, locals);
         loop {
-            let resolver = current_frame.resolver(loader);
+            let mut resolver = current_frame.resolver(loader);
             let exit_code =
                 current_frame //self
-                    .execute_code(&resolver, self, data_store, cost_strategy)
+                    .execute_code(&mut resolver, self, data_store, cost_strategy)
                     .map_err(|err| self.maybe_core_dump(err, &current_frame))?;
             match exit_code {
                 ExitCode::Return => {
@@ -163,7 +163,7 @@ impl<L: LogContext> Interpreter<L> {
                         )
                         .map_err(|e| set_err_info!(current_frame, e))?;
                     if func.is_native() {
-                        self.call_native(&resolver, data_store, cost_strategy, func, vec![])?;
+                        self.call_native(&mut resolver, data_store, cost_strategy, func, vec![])?;
                         current_frame.pc += 1; // advance past the Call instruction in the caller
                         continue;
                     }
@@ -198,7 +198,7 @@ impl<L: LogContext> Interpreter<L> {
                         )
                         .map_err(|e| set_err_info!(current_frame, e))?;
                     if func.is_native() {
-                        self.call_native(&resolver, data_store, cost_strategy, func, ty_args)?;
+                        self.call_native(&mut resolver, data_store, cost_strategy, func, ty_args)?;
                         current_frame.pc += 1; // advance past the Call instruction in the caller
                         continue;
                     }
@@ -236,11 +236,11 @@ impl<L: LogContext> Interpreter<L> {
     }
 
     /// Call a native functions.
-    fn call_native(
-        &mut self,
-        resolver: &Resolver,
-        data_store: &mut dyn DataStore,
-        cost_strategy: &mut CostStrategy,
+    fn call_native<'a, 'b, R: RemoteCache>(
+        &'a mut self,
+        resolver: &'a mut Resolver<'a>,
+        data_store: &'a mut TransactionDataCache<'b, R>,
+        cost_strategy: &'a mut CostStrategy,
         function: Arc<Function>,
         ty_args: Vec<Type>,
     ) -> VMResult<()> {
@@ -264,11 +264,11 @@ impl<L: LogContext> Interpreter<L> {
         })
     }
 
-    fn call_native_impl(
-        &mut self,
-        resolver: &Resolver,
-        data_store: &mut dyn DataStore,
-        cost_strategy: &mut CostStrategy,
+    fn call_native_impl<'i, 'a, 'b, R: RemoteCache>(
+        &'i mut self,
+        resolver: &'a mut Resolver<'a>,
+        data_store: &'a mut TransactionDataCache<'b, R>,
+        cost_strategy: &'a mut CostStrategy,
         function: Arc<Function>,
         ty_args: Vec<Type>,
     ) -> PartialVMResult<()> {
@@ -277,13 +277,18 @@ impl<L: LogContext> Interpreter<L> {
         for _ in 0..expected_args {
             arguments.push_front(self.operand_stack.pop()?);
         }
-        let mut native_context = FunctionContext::new(self, data_store, cost_strategy, resolver);
-        let native_function = function.get_native()?;
-        let result = native_function.dispatch(&mut native_context, ty_args, arguments)?;
+
+        let result = {
+            let mut native_context = FunctionContext::new(self, data_store, cost_strategy, resolver);
+            let native_function = function.get_native()?;
+            native_function.dispatch(&mut native_context, ty_args, arguments)?
+        };
+
         cost_strategy.deduct_gas(result.cost)?;
         let return_values = result
             .result
             .map_err(|code| PartialVMError::new(StatusCode::ABORTED).with_sub_status(code))?;
+
         for value in return_values {
             self.operand_stack.push(value)?;
         }
@@ -326,13 +331,14 @@ impl<L: LogContext> Interpreter<L> {
     }
 
     /// Load a resource from the data store.
-    fn load_resource<'a>(
-        data_store: &'a mut impl DataStore,
+    fn load_resource<'a, R: RemoteCache>(
+        data_store: &'a mut TransactionDataCache<R>,
         addr: AccountAddress,
         ty: &Type,
         log_context: &impl LogContext,
+        loader: &mut Loader,
     ) -> PartialVMResult<&'a mut GlobalValue> {
-        match data_store.load_resource(addr, ty) {
+        match data_store.load_resource(addr, ty, loader) {
             Ok(gv) => Ok(gv),
             Err(e) => {
                 log_context.alert();
@@ -345,26 +351,28 @@ impl<L: LogContext> Interpreter<L> {
     }
 
     /// BorrowGlobal (mutable and not) opcode.
-    fn borrow_global(
+    fn borrow_global<R: RemoteCache>(
         &mut self,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         addr: AccountAddress,
         ty: &Type,
+        loader: &mut Loader,
     ) -> PartialVMResult<AbstractMemorySize<GasCarrier>> {
-        let g = Self::load_resource(data_store, addr, ty, &self.log_context)?.borrow_global()?;
+        let g = Self::load_resource(data_store, addr, ty, &self.log_context, loader)?.borrow_global()?;
         let size = g.size();
         self.operand_stack.push(g)?;
         Ok(size)
     }
 
     /// Exists opcode.
-    fn exists(
+    fn exists<R: RemoteCache>(
         &mut self,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         addr: AccountAddress,
         ty: &Type,
+        loader: &mut Loader,
     ) -> PartialVMResult<AbstractMemorySize<GasCarrier>> {
-        let gv = Self::load_resource(data_store, addr, ty, &self.log_context)?;
+        let gv = Self::load_resource(data_store, addr, ty, &self.log_context, loader)?;
         let mem_size = gv.size();
         let exists = gv.exists()?;
         self.operand_stack.push(Value::bool(exists))?;
@@ -372,28 +380,30 @@ impl<L: LogContext> Interpreter<L> {
     }
 
     /// MoveFrom opcode.
-    fn move_from(
+    fn move_from<R: RemoteCache>(
         &mut self,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         addr: AccountAddress,
         ty: &Type,
+        loader: &mut Loader,
     ) -> PartialVMResult<AbstractMemorySize<GasCarrier>> {
-        let resource = Self::load_resource(data_store, addr, ty, &self.log_context)?.move_from()?;
+        let resource = Self::load_resource(data_store, addr, ty, &self.log_context, loader)?.move_from()?;
         let size = resource.size();
         self.operand_stack.push(resource)?;
         Ok(size)
     }
 
     /// MoveTo opcode.
-    fn move_to(
+    fn move_to<R: RemoteCache>(
         &mut self,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         addr: AccountAddress,
         ty: &Type,
         resource: Value,
+        loader: &mut Loader,
     ) -> PartialVMResult<AbstractMemorySize<GasCarrier>> {
         let size = resource.size();
-        Self::load_resource(data_store, addr, ty, &self.log_context)?.move_to(resource)?;
+        Self::load_resource(data_store, addr, ty, &self.log_context, loader)?.move_to(resource)?;
         Ok(size)
     }
 
@@ -430,7 +440,7 @@ impl<L: LogContext> Interpreter<L> {
     fn debug_print_frame<B: Write>(
         &self,
         buf: &mut B,
-        loader: &Loader,
+        loader: &mut Loader,
         idx: usize,
         frame: &Frame,
     ) -> PartialVMResult<()> {
@@ -494,7 +504,7 @@ impl<L: LogContext> Interpreter<L> {
     pub(crate) fn debug_print_stack_trace<B: Write>(
         &self,
         buf: &mut B,
-        loader: &Loader,
+        loader: &mut Loader,
     ) -> PartialVMResult<()> {
         debug_writeln!(buf, "Call Stack:")?;
         for (i, frame) in self.call_stack.0.iter().enumerate() {
@@ -677,11 +687,11 @@ impl Frame {
     }
 
     /// Execute a Move function until a return or a call opcode is found.
-    fn execute_code(
+    fn execute_code<R: RemoteCache>(
         &mut self,
-        resolver: &Resolver,
+        resolver: &mut Resolver,
         interpreter: &mut Interpreter<impl LogContext>,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         cost_strategy: &mut CostStrategy,
     ) -> VMResult<ExitCode> {
         self.execute_code_impl(resolver, interpreter, data_store, cost_strategy)
@@ -691,11 +701,11 @@ impl Frame {
             })
     }
 
-    fn execute_code_impl(
+    fn execute_code_impl<R: RemoteCache>(
         &mut self,
-        resolver: &Resolver,
+        resolver: &mut Resolver,
         interpreter: &mut Interpreter<impl LogContext>,
-        data_store: &mut impl DataStore,
+        data_store: &mut TransactionDataCache<R>,
         cost_strategy: &mut CostStrategy,
     ) -> PartialVMResult<ExitCode> {
         let code = self.function.code();
@@ -1024,33 +1034,33 @@ impl Frame {
                     Bytecode::MutBorrowGlobal(sd_idx) | Bytecode::ImmBorrowGlobal(sd_idx) => {
                         let addr = interpreter.operand_stack.pop_as::<AccountAddress>()?;
                         let ty = resolver.get_struct_type(*sd_idx);
-                        let size = interpreter.borrow_global(data_store, addr, &ty)?;
+                        let size = interpreter.borrow_global(data_store, addr, &ty, resolver.loader)?;
                         cost_strategy.charge_instr_with_size(Opcodes::MUT_BORROW_GLOBAL, size)?;
                     }
                     Bytecode::MutBorrowGlobalGeneric(si_idx)
                     | Bytecode::ImmBorrowGlobalGeneric(si_idx) => {
                         let addr = interpreter.operand_stack.pop_as::<AccountAddress>()?;
                         let ty = resolver.instantiate_generic_type(*si_idx, self.ty_args())?;
-                        let size = interpreter.borrow_global(data_store, addr, &ty)?;
+                        let size = interpreter.borrow_global(data_store, addr, &ty, resolver.loader)?;
                         cost_strategy
                             .charge_instr_with_size(Opcodes::MUT_BORROW_GLOBAL_GENERIC, size)?;
                     }
                     Bytecode::Exists(sd_idx) => {
                         let addr = interpreter.operand_stack.pop_as::<AccountAddress>()?;
                         let ty = resolver.get_struct_type(*sd_idx);
-                        let size = interpreter.exists(data_store, addr, &ty)?;
+                        let size = interpreter.exists(data_store, addr, &ty, resolver.loader)?;
                         cost_strategy.charge_instr_with_size(Opcodes::EXISTS, size)?;
                     }
                     Bytecode::ExistsGeneric(si_idx) => {
                         let addr = interpreter.operand_stack.pop_as::<AccountAddress>()?;
                         let ty = resolver.instantiate_generic_type(*si_idx, self.ty_args())?;
-                        let size = interpreter.exists(data_store, addr, &ty)?;
+                        let size = interpreter.exists(data_store, addr, &ty, resolver.loader)?;
                         cost_strategy.charge_instr_with_size(Opcodes::EXISTS_GENERIC, size)?;
                     }
                     Bytecode::MoveFrom(sd_idx) => {
                         let addr = interpreter.operand_stack.pop_as::<AccountAddress>()?;
                         let ty = resolver.get_struct_type(*sd_idx);
-                        let size = interpreter.move_from(data_store, addr, &ty)?;
+                        let size = interpreter.move_from(data_store, addr, &ty, resolver.loader)?;
                         // TODO: Have this calculate before pulling in the data based upon
                         // the size of the data that we are about to read in.
                         cost_strategy.charge_instr_with_size(Opcodes::MOVE_FROM, size)?;
@@ -1058,7 +1068,7 @@ impl Frame {
                     Bytecode::MoveFromGeneric(si_idx) => {
                         let addr = interpreter.operand_stack.pop_as::<AccountAddress>()?;
                         let ty = resolver.instantiate_generic_type(*si_idx, self.ty_args())?;
-                        let size = interpreter.move_from(data_store, addr, &ty)?;
+                        let size = interpreter.move_from(data_store, addr, &ty, resolver.loader)?;
                         // TODO: Have this calculate before pulling in the data based upon
                         // the size of the data that we are about to read in.
                         cost_strategy.charge_instr_with_size(Opcodes::MOVE_FROM_GENERIC, size)?;
@@ -1073,7 +1083,7 @@ impl Frame {
                             .value_as::<AccountAddress>()?;
                         let ty = resolver.get_struct_type(*sd_idx);
                         // REVIEW: Can we simplify Interpreter::move_to?
-                        let size = interpreter.move_to(data_store, addr, &ty, resource)?;
+                        let size = interpreter.move_to(data_store, addr, &ty, resource, resolver.loader)?;
                         cost_strategy.charge_instr_with_size(Opcodes::MOVE_TO, size)?;
                     }
                     Bytecode::MoveToGeneric(si_idx) => {
@@ -1085,7 +1095,7 @@ impl Frame {
                             .read_ref()?
                             .value_as::<AccountAddress>()?;
                         let ty = resolver.instantiate_generic_type(*si_idx, self.ty_args())?;
-                        let size = interpreter.move_to(data_store, addr, &ty, resource)?;
+                        let size = interpreter.move_to(data_store, addr, &ty, resource, resolver.loader)?;
                         cost_strategy.charge_instr_with_size(Opcodes::MOVE_TO_GENERIC, size)?;
                     }
                     Bytecode::FreezeRef => {
@@ -1125,7 +1135,7 @@ impl Frame {
         &self.ty_args
     }
 
-    fn resolver<'a>(&self, loader: &'a Loader) -> Resolver<'a> {
+    fn resolver<'a>(&self, loader: &'a mut Loader) -> Resolver<'a> {
         self.function.get_resolver(loader)
     }
 

@@ -16,8 +16,8 @@ use omv_types::gas_schedule::CostStrategy;
 use omv_core::errors::*;
 
 pub struct Session<'r, 'l, R> {
-    pub(crate) runtime: &'l VMRuntime,
-    pub(crate) data_cache: TransactionDataCache<'r, 'l, R>,
+    pub(crate) runtime: &'l mut VMRuntime,
+    pub(crate) data_cache: TransactionDataCache<'r, R>,
 }
 
 impl<'r, 'l, R: RemoteCache> Session<'r, 'l, R> {
@@ -118,13 +118,13 @@ impl<'r, 'l, R: RemoteCache> Session<'r, 'l, R> {
     ///
     /// In case an invariant violation occurs, the whole Session should be considered corrupted and
     /// one shall not proceed with effect generation.
-    pub fn execute_script(
-        &mut self,
+    pub fn execute_script<'a>(
+        &'a mut self,
         script: Vec<u8>,
         ty_args: Vec<TypeTag>,
         args: Vec<Vec<u8>>,
         senders: Vec<AccountAddress>,
-        cost_strategy: &mut CostStrategy,
+        cost_strategy: &'a mut CostStrategy,
         log_context: &impl LogContext,
     ) -> VMResult<()> {
         self.runtime.execute_script(
@@ -178,7 +178,7 @@ impl<'r, 'l, R: RemoteCache> Session<'r, 'l, R> {
     /// This MUST NOT be called if there is a previous invocation that failed with an invariant violation.
     pub fn finish(self) -> VMResult<(ChangeSet, Vec<Event>)> {
         self.data_cache
-            .into_effects()
+            .into_effects(&mut self.runtime.loader)
             .map_err(|e| e.finish(Location::Undefined))
     }
 }

@@ -1,14 +1,16 @@
 // Copyright (c) The Diem Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{interpreter::Interpreter, loader::Resolver, logging::LogContext};
+use crate::{
+    interpreter::Interpreter, loader::Resolver, logging::LogContext,
+    data_cache::{TransactionDataCache, RemoteCache},
+};
 use omv_primitives::{
     account_address::AccountAddress, gas_schedule::CostTable, language_storage::CORE_CODE_ADDRESS,
     value::MoveTypeLayout, vm_status::StatusType,
 };
 use omv_natives::{account, bcs, debug, event, hash, signature, signer, vector};
 use omv_types::{
-    data_store::DataStore,
     gas_schedule::CostStrategy,
     loaded_data::runtime_types::Type,
     natives::function::{NativeContext, NativeResult},
@@ -116,20 +118,20 @@ impl NativeFunction {
     }
 }
 
-pub(crate) struct FunctionContext<'a, L: LogContext> {
-    interpreter: &'a mut Interpreter<L>,
-    data_store: &'a mut dyn DataStore,
-    cost_strategy: &'a CostStrategy<'a>,
-    resolver: &'a Resolver<'a>,
+pub(crate) struct FunctionContext<'i, 'a, 'c, 'b, L: LogContext, R: RemoteCache> {
+    interpreter: &'i mut Interpreter<L>,
+    data_store: &'a mut TransactionDataCache<'b, R>,
+    cost_strategy: &'c CostStrategy<'c>,
+    resolver: &'a mut Resolver<'a>,
 }
 
-impl<'a, L: LogContext> FunctionContext<'a, L> {
+impl<'i, 'a, 'c, 'b, L: LogContext, R: RemoteCache> FunctionContext<'i, 'a, 'c, 'b, L, R> {
     pub(crate) fn new(
-        interpreter: &'a mut Interpreter<L>,
-        data_store: &'a mut dyn DataStore,
-        cost_strategy: &'a mut CostStrategy,
-        resolver: &'a Resolver<'a>,
-    ) -> FunctionContext<'a, L> {
+        interpreter: &'i mut Interpreter<L>,
+        data_store: &'a mut TransactionDataCache<'b, R>,
+        cost_strategy: &'c CostStrategy,
+        resolver: &'a mut Resolver<'a>,
+    ) -> FunctionContext<'i, 'a, 'c, 'b, L, R> {
         FunctionContext {
             interpreter,
             data_store,
@@ -139,10 +141,10 @@ impl<'a, L: LogContext> FunctionContext<'a, L> {
     }
 }
 
-impl<'a, L: LogContext> NativeContext for FunctionContext<'a, L> {
-    fn print_stack_trace<B: Write>(&self, buf: &mut B) -> PartialVMResult<()> {
+impl<'i, 'a, 'c, 'b, L: LogContext, R: RemoteCache> NativeContext for FunctionContext<'i, 'a, 'c, 'b, L, R> {
+    fn print_stack_trace<B: Write>(&mut self, buf: &mut B) -> PartialVMResult<()> {
         self.interpreter
-            .debug_print_stack_trace(buf, self.resolver.loader())
+            .debug_print_stack_trace(buf, &mut self.resolver.loader)
     }
 
     fn cost_table(&self) -> &CostTable {
@@ -156,14 +158,14 @@ impl<'a, L: LogContext> NativeContext for FunctionContext<'a, L> {
         ty: Type,
         val: Value,
     ) -> PartialVMResult<bool> {
-        match self.data_store.emit_event(guid, seq_num, ty, val) {
+        match self.data_store.emit_event(guid, seq_num, ty, val, self.resolver.loader) {
             Ok(()) => Ok(true),
             Err(e) if e.major_status().status_type() == StatusType::InvariantViolation => Err(e),
             Err(_) => Ok(false),
         }
     }
 
-    fn type_to_type_layout(&self, ty: &Type) -> PartialVMResult<Option<MoveTypeLayout>> {
+    fn type_to_type_layout(&mut self, ty: &Type) -> PartialVMResult<Option<MoveTypeLayout>> {
         match self.resolver.type_to_type_layout(ty) {
             Ok(ty_layout) => Ok(Some(ty_layout)),
             Err(e) if e.major_status().status_type() == StatusType::InvariantViolation => Err(e),
