@@ -1,9 +1,14 @@
 // Copyright (c) The Diem Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+//! Verifies bytecode sanity.
+
 #![forbid(unsafe_code)]
 
-//! Verifies bytecode sanity.
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[macro_use]
+extern crate alloc;
 
 // Bounds checks are implemented in the `vm` crate.
 pub mod check_duplication;

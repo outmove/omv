@@ -14,6 +14,7 @@ use crate::{
 };
 use abstract_state::{AbstractState, LocalState};
 use omv_primitives::vm_status::StatusCode;
+#[cfg(feature = "std")]
 use mirai_annotations::*;
 use omv_core::{
     errors::{PartialVMError, PartialVMResult},
@@ -82,7 +83,10 @@ fn execute_inner(
         Bytecode::Ret => {
             let local_states = state.local_states();
             let local_kinds = state.local_kinds();
+
+            #[cfg(feature = "std")]
             checked_precondition!(local_states.len() == local_kinds.len());
+
             for (local_state, local_kind) in local_states.iter().zip(local_kinds) {
                 match (local_state, local_kind) {
                     (LocalState::MaybeResourceful, _)

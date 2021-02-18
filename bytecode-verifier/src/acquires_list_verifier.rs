@@ -11,7 +11,6 @@
 //! - No additional resources (no extraneous resources not actually acquired)
 
 use omv_primitives::vm_status::StatusCode;
-use std::collections::{BTreeSet, HashMap};
 use omv_core::{
     access::ModuleAccess,
     errors::{PartialVMError, PartialVMResult},
@@ -20,13 +19,14 @@ use omv_core::{
         FunctionHandle, FunctionHandleIndex, StructDefinitionIndex,
     },
 };
+use alloc::collections::{BTreeSet, BTreeMap};
 
 pub(crate) struct AcquiresVerifier<'a> {
     module: &'a CompiledModule,
     current_function: FunctionDefinitionIndex,
     annotated_acquires: BTreeSet<StructDefinitionIndex>,
     actual_acquires: BTreeSet<StructDefinitionIndex>,
-    handle_to_def: HashMap<FunctionHandleIndex, &'a FunctionDefinition>,
+    handle_to_def: BTreeMap<FunctionHandleIndex, &'a FunctionDefinition>,
 }
 
 impl<'a> AcquiresVerifier<'a> {
@@ -40,7 +40,7 @@ impl<'a> AcquiresVerifier<'a> {
             .iter()
             .cloned()
             .collect();
-        let mut handle_to_def = HashMap::new();
+        let mut handle_to_def = BTreeMap::new();
         for func_def in module.function_defs() {
             handle_to_def.insert(func_def.function, func_def);
         }

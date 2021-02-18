@@ -7,11 +7,12 @@
 //! - All "breaks" (forward, loop-exiting jumps) go to the "end" of the loop
 //! - All "continues" (back jumps in a loop) are only to the current loop
 use omv_primitives::vm_status::StatusCode;
-use std::{collections::HashSet, convert::TryInto};
 use omv_core::{
     errors::{PartialVMError, PartialVMResult},
     file_format::{Bytecode, CodeOffset, CodeUnit, FunctionDefinitionIndex},
 };
+use core::convert::TryInto;
+use alloc::{vec::Vec, collections::BTreeSet};
 
 pub fn verify(
     current_function_opt: Option<FunctionDefinitionIndex>,
@@ -209,7 +210,7 @@ fn check_no_loop_splits(context: &ControlFlowVerifier, labels: &[Label]) -> Part
 
 // Only called after continues are verified, so we can assume that loops are well nested
 fn count_loop_depth(labels: &[Label]) -> Vec<usize> {
-    let last_continues: HashSet<CodeOffset> = labels
+    let last_continues: BTreeSet<CodeOffset> = labels
         .iter()
         .filter_map(|label| match label {
             Label::Loop { last_continue } => Some(*last_continue),

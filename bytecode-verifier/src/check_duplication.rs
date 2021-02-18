@@ -9,7 +9,6 @@
 //! - the handles in struct and function definitions point to the self module index
 //! - all struct and function handles pointing to the self module index have a definition
 use omv_primitives::{account_address::AccountAddress, identifier::Identifier, vm_status::StatusCode};
-use std::{collections::HashSet, hash::Hash};
 use omv_core::{
     access::{ModuleAccess, ScriptAccess},
     errors::{verification_error, Location, PartialVMResult, VMResult},
@@ -20,6 +19,8 @@ use omv_core::{
     },
     IndexKind,
 };
+use core::hash::Hash;
+use alloc::collections::BTreeSet;
 
 pub struct DuplicationChecker<'a> {
     module: &'a CompiledModule,
@@ -236,7 +237,7 @@ impl<'a> DuplicationChecker<'a> {
             ));
         }
         // Check that each struct handle in self module is implemented (has a declaration)
-        let implemented_struct_handles: HashSet<StructHandleIndex> = self
+        let implemented_struct_handles: BTreeSet<StructHandleIndex> = self
             .module
             .struct_defs()
             .iter()
@@ -289,7 +290,7 @@ impl<'a> DuplicationChecker<'a> {
             ));
         }
         // Check that each function handle in self module is implemented (has a declaration)
-        let implemented_function_handles: HashSet<FunctionHandleIndex> = self
+        let implemented_function_handles: BTreeSet<FunctionHandleIndex> = self
             .module
             .function_defs()
             .iter()
@@ -323,9 +324,9 @@ impl<'a> DuplicationChecker<'a> {
     fn first_duplicate_element<T>(iter: T) -> Option<TableIndex>
     where
         T: IntoIterator,
-        T::Item: Eq + Hash,
+        T::Item: Eq + Hash + Ord,
     {
-        let mut uniq = HashSet::new();
+        let mut uniq = BTreeSet::new();
         for (i, x) in iter.into_iter().enumerate() {
             if !uniq.insert(x) {
                 return Some(i as TableIndex);

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module defines the control-flow graph uses for bytecode verification.
-use std::collections::{BTreeMap, BTreeSet};
 use omv_core::file_format::{Bytecode, CodeOffset};
+use alloc::{vec::Vec, boxed::Box, collections::{BTreeMap, BTreeSet}};
 
 // BTree/Hash agnostic type wrappers
 type Map<K, V> = BTreeMap<K, V>;
@@ -49,6 +49,7 @@ pub struct VMControlFlowGraph {
 }
 
 impl BasicBlock {
+    #[cfg(feature = "std")]
     pub fn display(&self) {
         println!("+=======================+");
         println!("| Enter:  {}            |", self.entry);
@@ -95,6 +96,7 @@ impl VMControlFlowGraph {
         cfg
     }
 
+    #[cfg(feature = "std")]
     pub fn display(&self) {
         for block in self.blocks.values() {
             block.display();

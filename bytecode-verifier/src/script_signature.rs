@@ -16,6 +16,7 @@ use omv_core::{
     },
     IndexKind,
 };
+use alloc::string::ToString;
 
 /// This function checks the extra requirements on the signature of the main function of a script.
 pub fn verify_script(script: &CompiledScript) -> VMResult<()> {

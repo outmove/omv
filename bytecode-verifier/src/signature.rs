@@ -16,6 +16,7 @@ use omv_core::{
     },
     IndexKind,
 };
+use alloc::string::ToString;
 
 pub struct SignatureChecker<'a> {
     resolver: BinaryIndexedView<'a>,

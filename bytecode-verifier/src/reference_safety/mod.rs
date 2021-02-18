@@ -14,8 +14,8 @@ use crate::{
     binary_views::{BinaryIndexedView, FunctionView},
 };
 use abstract_state::{AbstractState, AbstractValue};
+#[cfg(feature = "std")]
 use mirai_annotations::*;
-use std::collections::{BTreeSet, HashMap};
 use omv_core::{
     errors::{PartialVMError, PartialVMResult},
     file_format::{
@@ -23,11 +23,12 @@ use omv_core::{
         SignatureToken, StructDefinition, StructFieldInformation,
     },
 };
+use alloc::{vec::Vec, collections::{BTreeSet, BTreeMap}};
 
 struct ReferenceSafetyAnalysis<'a> {
     resolver: &'a BinaryIndexedView<'a>,
     function_view: &'a FunctionView<'a>,
-    name_def_map: &'a HashMap<IdentifierIndex, FunctionDefinitionIndex>,
+    name_def_map: &'a BTreeMap<IdentifierIndex, FunctionDefinitionIndex>,
     stack: Vec<AbstractValue>,
 }
 
@@ -35,7 +36,7 @@ impl<'a> ReferenceSafetyAnalysis<'a> {
     fn new(
         resolver: &'a BinaryIndexedView<'a>,
         function_view: &'a FunctionView<'a>,
-        name_def_map: &'a HashMap<IdentifierIndex, FunctionDefinitionIndex>,
+        name_def_map: &'a BTreeMap<IdentifierIndex, FunctionDefinitionIndex>,
     ) -> Self {
         Self {
             resolver,
@@ -49,7 +50,7 @@ impl<'a> ReferenceSafetyAnalysis<'a> {
 pub(crate) fn verify<'a>(
     resolver: &'a BinaryIndexedView<'a>,
     function_view: &FunctionView,
-    name_def_map: &'a HashMap<IdentifierIndex, FunctionDefinitionIndex>,
+    name_def_map: &'a BTreeMap<IdentifierIndex, FunctionDefinitionIndex>,
 ) -> PartialVMResult<()> {
     let initial_state = AbstractState::new(function_view);
 
@@ -107,22 +108,28 @@ fn num_fields(struct_def: &StructDefinition) -> usize {
     }
 }
 
+#[allow(unused_variables)]
 fn pack(verifier: &mut ReferenceSafetyAnalysis, struct_def: &StructDefinition) {
+    #[cfg(feature = "std")]
     for _ in 0..num_fields(struct_def) {
         checked_verify!(verifier.stack.pop().unwrap().is_value())
     }
+
     // TODO maybe call state.value_for
     verifier.stack.push(AbstractValue::NonReference)
 }
 
 fn unpack(verifier: &mut ReferenceSafetyAnalysis, struct_def: &StructDefinition) {
+    #[cfg(feature = "std")]
     checked_verify!(verifier.stack.pop().unwrap().is_value());
+
     // TODO maybe call state.value_for
     for _ in 0..num_fields(struct_def) {
         verifier.stack.push(AbstractValue::NonReference)
     }
 }
 
+#[allow(unused_variables)]
 fn execute_inner(
     verifier: &mut ReferenceSafetyAnalysis,
     state: &mut AbstractState,
@@ -161,7 +168,10 @@ fn execute_inner(
         Bytecode::WriteRef => {
             let id = verifier.stack.pop().unwrap().ref_id().unwrap();
             let val_operand = verifier.stack.pop().unwrap();
+
+            #[cfg(feature = "std")]
             checked_verify!(val_operand.is_value());
+
             state.write_ref(offset, id)?
         }
 
@@ -201,34 +211,46 @@ fn execute_inner(
         }
 
         Bytecode::MutBorrowGlobal(idx) => {
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
             let value = state.borrow_global(offset, true, *idx)?;
             verifier.stack.push(value)
         }
         Bytecode::MutBorrowGlobalGeneric(idx) => {
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
             let struct_inst = verifier.resolver.struct_instantiation_at(*idx)?;
             let value = state.borrow_global(offset, true, struct_inst.def)?;
             verifier.stack.push(value)
         }
         Bytecode::ImmBorrowGlobal(idx) => {
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
             let value = state.borrow_global(offset, false, *idx)?;
             verifier.stack.push(value)
         }
         Bytecode::ImmBorrowGlobalGeneric(idx) => {
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
             let struct_inst = verifier.resolver.struct_instantiation_at(*idx)?;
             let value = state.borrow_global(offset, false, struct_inst.def)?;
             verifier.stack.push(value)
         }
         Bytecode::MoveFrom(idx) => {
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
             let value = state.move_from(offset, *idx)?;
             verifier.stack.push(value)
         }
         Bytecode::MoveFromGeneric(idx) => {
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
             let struct_inst = verifier.resolver.struct_instantiation_at(*idx)?;
             let value = state.move_from(offset, struct_inst.def)?;
             verifier.stack.push(value)
@@ -264,11 +286,14 @@ fn execute_inner(
         | Bytecode::ExistsGeneric(_) => (),
 
         Bytecode::BrTrue(_) | Bytecode::BrFalse(_) | Bytecode::Abort => {
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
         }
         Bytecode::MoveTo(_) | Bytecode::MoveToGeneric(_) => {
+            #[cfg(feature = "std")]
             // resource value
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
             // signer reference
             state.release_value(verifier.stack.pop().unwrap());
         }
@@ -300,8 +325,12 @@ fn execute_inner(
         | Bytecode::Gt
         | Bytecode::Le
         | Bytecode::Ge => {
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
+            #[cfg(feature = "std")]
             checked_verify!(verifier.stack.pop().unwrap().is_value());
+
             // TODO maybe call state.value_for
             verifier.stack.push(AbstractValue::NonReference)
         }
@@ -341,7 +370,9 @@ impl<'a> TransferFunctions for ReferenceSafetyAnalysis<'a> {
     ) -> Result<(), Self::AnalysisError> {
         execute_inner(self, state, bytecode, index)?;
         if index == last_index {
+            #[cfg(feature = "std")]
             checked_verify!(self.stack.is_empty());
+
             *state = state.construct_canonical_state()
         }
         Ok(())

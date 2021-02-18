@@ -20,6 +20,7 @@ use omv_core::{
     },
     CompiledModule,
 };
+use alloc::{borrow::ToOwned, vec::Vec};
 
 // A `BinaryIndexedView` provides table indexed access for both `CompiledModule` and
 // `CompiledScript`.

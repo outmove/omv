@@ -6,7 +6,6 @@
 //! each module in isolation guarantees that there is no structural recursion globally.
 use omv_primitives::vm_status::StatusCode;
 use petgraph::{algo::toposort, graphmap::DiGraphMap};
-use std::collections::{BTreeMap, BTreeSet};
 use omv_core::{
     access::ModuleAccess,
     errors::{verification_error, Location, PartialVMError, PartialVMResult, VMResult},
@@ -17,6 +16,7 @@ use omv_core::{
     views::StructDefinitionView,
     IndexKind,
 };
+use alloc::{borrow::ToOwned, collections::{BTreeMap, BTreeSet}};
 
 pub struct RecursiveStructDefChecker<'a> {
     module: &'a CompiledModule,

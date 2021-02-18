@@ -3,12 +3,12 @@
 
 //! This module contains verification of usage of dependencies for modules
 use omv_primitives::{language_storage::ModuleId, vm_status::StatusCode};
-use std::collections::BTreeSet;
 use omv_core::{
     access::ModuleAccess,
     errors::{Location, PartialVMError, PartialVMResult, VMResult},
     file_format::CompiledModule,
 };
+use alloc::{vec::Vec, collections::BTreeSet};
 
 pub fn verify_module<F: Fn(&ModuleId) -> PartialVMResult<Vec<ModuleId>>>(
     module: &CompiledModule,

@@ -4,12 +4,14 @@
 //! This module defines the abstract state for the local safety analysis.
 
 use crate::absint::{AbstractDomain, JoinResult};
+#[cfg(feature = "std")]
 use mirai_annotations::{checked_precondition, checked_verify};
 use omv_primitives::vm_status::StatusCode;
 use omv_core::{
     errors::PartialVMError,
     file_format::{CodeOffset, FunctionDefinitionIndex, Kind, LocalIndex},
 };
+use alloc::vec::Vec;
 
 /// LocalState represents the current assignment state of a local
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -77,7 +79,9 @@ impl AbstractState {
     }
 
     pub fn set_unavailable(&mut self, idx: LocalIndex) {
+        #[cfg(feature = "std")]
         checked_precondition!(self.local_states[idx as usize] == Available);
+        
         self.local_states[idx as usize] = Unavailable
     }
 
@@ -89,9 +93,15 @@ impl AbstractState {
     }
 
     fn join_(&self, other: &Self) -> Self {
+        #[cfg(feature = "std")]
         checked_precondition!(self.current_function == other.current_function);
+
+        #[cfg(feature = "std")]
         checked_precondition!(self.local_kinds.len() == other.local_kinds.len());
+
+        #[cfg(feature = "std")]
         checked_precondition!(self.local_states.len() == other.local_states.len());
+
         let current_function = self.current_function;
         let local_kinds = self.local_kinds.clone();
         let local_states = self
@@ -135,7 +145,10 @@ impl AbstractDomain for AbstractState {
     /// attempts to join state to self and returns the result
     fn join(&mut self, state: &AbstractState) -> JoinResult {
         let joined = Self::join_(self, state);
+
+        #[cfg(feature = "std")]
         checked_verify!(self.local_states.len() == joined.local_states.len());
+
         let locals_unchanged = self
             .local_states
             .iter()

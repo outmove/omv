@@ -9,6 +9,7 @@ use crate::{
     control_flow_graph::ControlFlowGraph,
 };
 use omv_primitives::vm_status::StatusCode;
+#[cfg(feature = "std")]
 use mirai_annotations::*;
 use omv_core::{
     errors::{PartialVMError, PartialVMResult},
@@ -18,6 +19,7 @@ use omv_core::{
         StructDefinitionIndex, StructFieldInformation, StructHandleIndex,
     },
 };
+use alloc::{boxed::Box, vec::Vec};
 
 struct Locals<'a> {
     param_count: usize,
@@ -734,9 +736,11 @@ fn instantiate(token: &SignatureToken, subst: &Signature) -> SignatureToken {
         Reference(ty) => Reference(Box::new(instantiate(ty, subst))),
         MutableReference(ty) => MutableReference(Box::new(instantiate(ty, subst))),
         TypeParameter(idx) => {
+            #[cfg(feature = "std")]
             // Assume that the caller has previously parsed and verified the structure of the
             // file and that this guarantees that type parameter indices are always in bounds.
             assume!((*idx as usize) < subst.len());
+
             subst.0[*idx as usize].clone()
         }
     }

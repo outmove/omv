@@ -6,10 +6,21 @@ license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]
-anyhow = "1.0.38"
-mirai-annotations = "1.10.1"
-petgraph = "0.5.1"
+anyhow = { version = "1.0.38", default-features = false }
+mirai-annotations = { version = "1.10.1", optional = true }
+nopetgraph = { version = "0.5.1", default-features = false, features = ["graphmap"] }
 
-borrow-graph = { path = "../utils/borrow-graph", version = "0.0.1" }
-omv-core = { path = "../core", version = "0.1.0" }
-omv-primitives = { path = "../primitives", version = "0.1.0" }
+borrow-graph = { path = "../utils/borrow-graph", version = "0.0.1", default-features = false }
+omv-core = { path = "../core", version = "0.1.0", default-features = false }
+omv-primitives = { path = "../primitives", version = "0.1.0", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "anyhow/std",
+    "mirai-annotations",
+    "nopetgraph/std",
+    "borrow-graph/std",
+    "omv-core/std",
+    "omv-primitives/std",
+]

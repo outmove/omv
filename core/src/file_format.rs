@@ -252,7 +252,7 @@ pub struct StructHandle {
 /// and the verifier enforces that property. The signature of the function is used at link time to
 /// ensure the function reference is valid and it is also used by the verifier to type check
 /// function calls.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct FunctionHandle {
     /// The module that defines the function.
     pub module: ModuleHandleIndex,
@@ -267,7 +267,7 @@ pub struct FunctionHandle {
 }
 
 /// A field access info (owner type and offset)
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct FieldHandle {
     pub owner: StructDefinitionIndex,
     pub field: MemberCount,
@@ -277,7 +277,7 @@ pub struct FieldHandle {
 // Definitions are the module code. So the set of types and functions in the module.
 
 /// `StructFieldInformation` indicates whether a struct is native or has user-specified fields
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum StructFieldInformation {
     Native,
     Declared(Vec<FieldDefinition>),
@@ -292,14 +292,14 @@ pub enum StructFieldInformation {
 // `StructInstantiation`s
 
 /// A complete or partial instantiation of a generic struct
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct StructDefInstantiation {
     pub def: StructDefinitionIndex,
     pub type_parameters: SignatureIndex,
 }
 
 /// A complete or partial instantiation of a function
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct FunctionInstantiation {
     pub handle: FunctionHandleIndex,
     pub type_parameters: SignatureIndex,
@@ -311,7 +311,7 @@ pub struct FunctionInstantiation {
 /// of the owner type.
 /// E.g. for `S<u8, bool>.f` where `f` is a field of any type, `instantiation`
 /// would be `[u8, boo]`
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct FieldInstantiation {
     pub handle: FieldHandleIndex,
     pub type_parameters: SignatureIndex,
@@ -319,7 +319,7 @@ pub struct FieldInstantiation {
 
 /// A `StructDefinition` is a type definition. It either indicates it is native or defines all the
 /// user-specified fields declared on the type.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct StructDefinition {
     /// The `StructHandle` for this `StructDefinition`. This has the name and the resource flag
     /// for the type.
@@ -342,7 +342,7 @@ impl StructDefinition {
 }
 
 /// A `FieldDefinition` is the definition of a field: its name and the field type.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FieldDefinition {
     /// The name of the field.
     pub name: IdentifierIndex,
@@ -352,7 +352,7 @@ pub struct FieldDefinition {
 
 /// `Visibility` restricts the accessibility of the associated entity.
 /// - For function visibility, it restricts who may call into the associated function.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[repr(u8)]
 pub enum Visibility {
     /// Accessible within its defining module only.
@@ -424,13 +424,13 @@ impl FunctionDefinition {
 
 /// A type definition. `SignatureToken` allows the definition of the set of known types and their
 /// composition.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct TypeSignature(pub SignatureToken);
 
 // TODO: remove at some point or move it in the front end (language/compiler)
 /// A `FunctionSignature` in internally used to create a unique representation of the overall
 /// signature as need. Consider deprecated...
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct FunctionSignature {
     /// The list of return types.
     pub return_: Vec<SignatureToken>,
@@ -444,7 +444,7 @@ pub struct FunctionSignature {
 ///
 /// Locals include the arguments to the function from position `0` to argument `count - 1`.
 /// The remaining elements are the type of each local.
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
 pub struct Signature(
     pub Vec<SignatureToken>,
 );
@@ -739,14 +739,14 @@ impl SignatureToken {
 
 /// A `Constant` is a serialized value along with it's type. That type will be deserialized by the
 /// loader/evauluator
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Constant {
     pub type_: SignatureToken,
     pub data: Vec<u8>,
 }
 
 /// A `CodeUnit` is the body of a function. It has the function header and the instruction stream.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct CodeUnit {
     /// List of locals type. All locals are typed.
     pub locals: SignatureIndex,
@@ -759,7 +759,7 @@ pub struct CodeUnit {
 ///
 /// Bytecodes operate on a stack machine and each bytecode has side effect on the stack and the
 /// instruction stream.
-#[derive(Clone, Hash, Eq, PartialEq)]
+#[derive(Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Bytecode {
     /// Pop and discard the value at the top of the stack.
     /// The value on the stack must be an copyable type.

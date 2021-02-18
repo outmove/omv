@@ -8,8 +8,8 @@ use crate::{
 };
 use borrow_graph::references::RefID;
 use omv_primitives::vm_status::StatusCode;
+#[cfg(feature = "std")]
 use mirai_annotations::{checked_postcondition, checked_precondition, checked_verify};
-use std::collections::{BTreeMap, BTreeSet};
 use omv_core::{
     errors::{PartialVMError, PartialVMResult},
     file_format::{
@@ -17,6 +17,7 @@ use omv_core::{
         SignatureToken, StructDefinitionIndex,
     },
 };
+use alloc::{vec::Vec, collections::{BTreeMap, BTreeSet}};
 
 type BorrowGraph = borrow_graph::graph::BorrowGraph<(), Label>;
 
@@ -29,6 +30,7 @@ pub(crate) enum AbstractValue {
 }
 
 impl AbstractValue {
+    #[cfg(feature = "std")]
     /// checks if self is a reference
     pub fn is_reference(&self) -> bool {
         match self {
@@ -37,6 +39,7 @@ impl AbstractValue {
         }
     }
 
+    #[cfg(feature = "std")]
     /// checks if self is a value
     pub fn is_value(&self) -> bool {
         !self.is_reference()
@@ -60,8 +63,8 @@ enum Label {
 }
 
 // Needed for debugging with the borrow graph
-impl std::fmt::Display for Label {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Label {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Label::Local(i) => write!(f, "local#{}", i),
             Label::Global(i) => write!(f, "resource@{}", i),
@@ -110,7 +113,9 @@ impl AbstractState {
         }
         state.borrow_graph.new_ref(state.frame_root(), true);
 
+        #[cfg(feature = "std")]
         checked_verify!(state.is_canonical());
+
         state
     }
 
@@ -223,7 +228,9 @@ impl AbstractState {
     /// - Mutable references are freezable if there are no consistent borrows
     /// - Immutable references are not writable by the typing rules
     fn is_writable(&self, id: RefID) -> bool {
+        #[cfg(feature = "std")]
         checked_precondition!(self.borrow_graph.is_mutable(id));
+
         !self.has_consistent_borrows(id, None)
     }
 
@@ -231,7 +238,9 @@ impl AbstractState {
     /// - Mutable references are freezable if there are no consistent mutable borrows
     /// - Immutable references are not freezable by the typing rules
     fn is_freezable(&self, id: RefID, at_field_opt: Option<FieldHandleIndex>) -> bool {
+        #[cfg(feature = "std")]
         checked_precondition!(self.borrow_graph.is_mutable(id));
+
         !self.has_consistent_mutable_borrows(id, at_field_opt.map(Label::Field))
     }
 
@@ -346,6 +355,7 @@ impl AbstractState {
         Ok(AbstractValue::Reference(frozen_id))
     }
 
+    #[allow(unused_variables)]
     pub fn comparison(
         &mut self,
         offset: CodeOffset,
@@ -364,7 +374,10 @@ impl AbstractState {
                 self.release(id2)
             }
             (v1, v2) => {
+                #[cfg(feature = "std")]
                 checked_verify!(v1.is_value());
+
+                #[cfg(feature = "std")]
                 checked_verify!(v2.is_value());
             }
         }
@@ -567,7 +580,10 @@ impl AbstractState {
                 (*local, new_value)
             })
             .collect::<BTreeMap<_, _>>();
+
+        #[cfg(feature = "std")]
         checked_verify!(self.locals.len() == locals.len());
+
         let mut borrow_graph = self.borrow_graph.clone();
         borrow_graph.remap_refs(&id_map);
         let canonical_state = AbstractState {
@@ -577,7 +593,10 @@ impl AbstractState {
             num_locals: self.num_locals,
             next_id: self.num_locals + 1,
         };
+
+        #[cfg(feature = "std")]
         checked_postcondition!(canonical_state.is_canonical());
+
         canonical_state
     }
 
@@ -585,6 +604,7 @@ impl AbstractState {
         !borrows.keys().any(|x| self.borrow_graph.is_mutable(*x))
     }
 
+    #[cfg(feature = "std")]
     fn is_canonical(&self) -> bool {
         self.num_locals + 1 == self.next_id
             && self.locals.iter().all(|(local, value)| {
@@ -599,11 +619,20 @@ impl AbstractState {
         0..self.num_locals as LocalIndex
     }
 
+    #[allow(unused_variables)]
     pub fn join_(&self, other: &Self) -> Self {
+        #[cfg(feature = "std")]
         checked_precondition!(self.current_function == other.current_function);
+
+        #[cfg(feature = "std")]
         checked_precondition!(self.is_canonical() && other.is_canonical());
+
+        #[cfg(feature = "std")]
         checked_precondition!(self.next_id == other.next_id);
+
+        #[cfg(feature = "std")]
         checked_precondition!(self.num_locals == other.num_locals);
+
         let mut locals = BTreeMap::new();
         let mut self_graph = self.borrow_graph.clone();
         let mut other_graph = other.borrow_graph.clone();
@@ -629,8 +658,12 @@ impl AbstractState {
 
                 // The local has a value on each side, add it to the state
                 (Some(v1), Some(v2)) => {
+                    #[cfg(feature = "std")]
                     checked_verify!(v1 == v2);
+
+                    #[cfg(feature = "std")]
                     checked_verify!(!locals.contains_key(&local));
+
                     locals.insert(local, *v1);
                 }
             }
@@ -655,8 +688,13 @@ impl AbstractDomain for AbstractState {
     /// attempts to join state to self and returns the result
     fn join(&mut self, state: &AbstractState) -> JoinResult {
         let joined = Self::join_(self, state);
+
+        #[cfg(feature = "std")]
         checked_verify!(joined.is_canonical());
+
+        #[cfg(feature = "std")]
         checked_verify!(self.num_locals == joined.num_locals);
+
         let locals_unchanged = self
             .iter_locals()
             .all(|idx| self.locals.get(&idx) == joined.locals.get(&idx));
