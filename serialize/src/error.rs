@@ -7,12 +7,6 @@ use alloc::string::{String, ToString};
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-#[cfg(feature = "std")]
-pub type IoError = std::io::Error;
-
-#[cfg(not(feature = "std"))]
-pub struct IoError(pub String);
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     Eof,
@@ -40,23 +34,16 @@ impl fmt::Display for Error {
 }
 
 #[cfg(feature = "std")]
-impl From<IoError> for Error {
-    fn from(err: IoError) -> Self {
+impl From<omv_io::Error> for Error {
+    fn from(err: omv_io::Error) -> Self {
         Error::Io(err.to_string())
     }
 }
 
 #[cfg(not(feature = "std"))]
-impl From<IoError> for Error {
-    fn from(err: IoError) -> Self {
+impl From<omv_io::Error> for Error {
+    fn from(err: omv_io::Error) -> Self {
         Error::Io(err.0)
-    }
-}
-
-#[cfg(not(feature = "std"))]
-impl<'a> From<&'a str> for IoError {
-    fn from(s: &'a str) -> IoError {
-        IoError(s.into())
     }
 }
 

@@ -9,11 +9,12 @@ use omv_primitives::{
     language_storage::ModuleId,
     vm_status::{self, StatusCode, StatusType, VMStatus},
 };
-use std::fmt;
+use core::fmt;
+use alloc::{string::String, vec::Vec};
 
-pub type VMResult<T> = ::std::result::Result<T, VMError>;
-pub type BinaryLoaderResult<T> = ::std::result::Result<T, PartialVMError>;
-pub type PartialVMResult<T> = ::std::result::Result<T, PartialVMError>;
+pub type VMResult<T> = ::core::result::Result<T, VMError>;
+pub type BinaryLoaderResult<T> = ::core::result::Result<T, PartialVMError>;
+pub type PartialVMResult<T> = ::core::result::Result<T, PartialVMError>;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Location {

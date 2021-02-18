@@ -33,6 +33,7 @@ use crate::{
     internals::ModuleIndex,
     IndexKind, SignatureTokenKind,
 };
+#[cfg(feature = "std")]
 use mirai_annotations::*;
 use omv_primitives::{
     account_address::AccountAddress,
@@ -41,6 +42,7 @@ use omv_primitives::{
     vm_status::StatusCode,
 };
 use ref_cast::RefCast;
+use alloc::{vec::Vec, boxed::Box, string::ToString, borrow::ToOwned};
 
 /// Generic index into one of the tables in the binary format.
 pub type TableIndex = u16;
@@ -62,14 +64,14 @@ macro_rules! define_index {
             }
         }
 
-        impl ::std::fmt::Display for $name {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        impl ::core::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                 write!(f, "{}", self.0)
             }
         }
 
-        impl ::std::fmt::Debug for $name {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        impl ::core::fmt::Debug for $name {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                 write!(f, "{}({})", stringify!($name), self.0)
             }
         }
@@ -369,7 +371,7 @@ impl Default for Visibility {
     }
 }
 
-impl std::convert::TryFrom<u8> for Visibility {
+impl core::convert::TryFrom<u8> for Visibility {
     type Error = ();
 
     fn try_from(v: u8) -> Result<Self, Self::Error> {
@@ -604,8 +606,8 @@ impl<'a> Iterator for SignatureTokenPreorderTraversalIterWithDepth<'a> {
     }
 }
 
-impl std::fmt::Debug for SignatureToken {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl core::fmt::Debug for SignatureToken {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         match self {
             SignatureToken::Bool => write!(f, "Bool"),
             SignatureToken::U8 => write!(f, "U8"),
@@ -1162,8 +1164,8 @@ pub enum Bytecode {
 
 pub const NUMBER_OF_NATIVE_FUNCTIONS: usize = 18;
 
-impl ::std::fmt::Debug for Bytecode {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl ::core::fmt::Debug for Bytecode {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         match self {
             Bytecode::Pop => write!(f, "Pop"),
             Bytecode::Ret => write!(f, "Ret"),
@@ -1262,12 +1264,14 @@ impl Bytecode {
 
     /// Return the successor offsets of this bytecode instruction.
     pub fn get_successors(pc: CodeOffset, code: &[Bytecode]) -> Vec<CodeOffset> {
+        #[cfg(feature = "std")]
         checked_precondition!(
             // The program counter could be added to at most twice and must remain
             // within the bounds of the code.
             pc <= u16::max_value() - 2 && (pc as usize) < code.len(),
             "Program counter out of bounds"
         );
+
         let bytecode = &code[pc as usize];
         let mut v = vec![];
 
@@ -1605,6 +1609,7 @@ impl CompiledModule {
 
     /// Returns the number of items of a specific `IndexKind`.
     pub fn kind_count(&self, kind: IndexKind) -> usize {
+        #[cfg(feature = "std")]
         precondition!(!matches!(
             kind,
             IndexKind::LocalPool
@@ -1613,6 +1618,7 @@ impl CompiledModule {
                 | IndexKind::TypeParameter
                 | IndexKind::MemberCount
         ));
+
         self.as_inner().kind_count(kind)
     }
 
@@ -1637,7 +1643,10 @@ impl CompiledModule {
     )]
     pub fn into_script(self, conv_info: ScriptConversionInfo) -> CompiledScript {
         let mut inner = self.into_inner();
+
+        #[cfg(feature = "std")]
         precondition!(!inner.function_defs.is_empty());
+
         let main = inner.function_defs.pop().unwrap();
 
         if conv_info.added_dummy_addr {

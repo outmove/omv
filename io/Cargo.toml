@@ -1,0 +1,11 @@
+[package]
+name = "omv-io"
+version = "0.1.0"
+authors = ["Wei Tang <wei@that.world>"]
+edition = "2018"
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []

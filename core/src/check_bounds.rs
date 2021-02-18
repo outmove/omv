@@ -16,7 +16,6 @@ use crate::{
     IndexKind,
 };
 use omv_primitives::vm_status::StatusCode;
-use std::u8;
 
 pub struct BoundsChecker<'a> {
     module: &'a CompiledModuleMut,

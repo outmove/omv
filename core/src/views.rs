@@ -11,13 +11,10 @@
 //!   immediately -- the views are a convenience to make that simpler. They've been written as lazy
 //!   iterators to aid understanding of the file format and to make it easy to generate views.
 
-use std::iter::DoubleEndedIterator;
-
 use crate::{access::ModuleAccess, file_format::*, SignatureTokenKind};
-use std::collections::BTreeSet;
-
 use omv_primitives::{identifier::IdentStr, language_storage::ModuleId};
-use std::collections::BTreeMap;
+use core::iter::DoubleEndedIterator;
+use alloc::{vec::Vec, collections::{BTreeSet, BTreeMap}};
 
 /// Represents a lazily evaluated abstraction over a module.
 ///

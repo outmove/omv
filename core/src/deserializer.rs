@@ -5,7 +5,9 @@ use crate::{errors::*, file_format::*, file_format_common::*};
 use omv_primitives::{
     account_address::AccountAddress, identifier::Identifier, vm_status::StatusCode,
 };
-use std::{collections::HashSet, convert::TryInto, io::Read};
+use omv_io::Read;
+use core::convert::TryInto;
+use alloc::{vec::Vec, string::{String, ToString}, boxed::Box, collections::BTreeSet};
 
 impl CompiledScript {
     /// Deserializes a &[u8] slice into a `CompiledScript` instance.
@@ -344,7 +346,7 @@ fn check_tables(tables: &mut Vec<Table>, binary_len: usize) -> BinaryLoaderResul
     tables.sort_by(|t1, t2| t1.offset.cmp(&t2.offset));
 
     let mut current_offset: u32 = 0;
-    let mut table_types = HashSet::new();
+    let mut table_types = BTreeSet::new();
     for table in tables {
         if table.offset != current_offset {
             return Err(PartialVMError::new(StatusCode::BAD_HEADER_TABLE));

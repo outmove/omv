@@ -6,12 +6,22 @@ license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]
-mirai-annotations = "1.10.1"
-once_cell = "1.4.1"
-sha2 = "0.9.3"
-serde = { version = "1.0.123", features = ["derive", "rc"] }
+mirai-annotations = { version = "1.10.1", optional = true }
+sha2 = { version = "0.9.3", default-features = false }
+serde = { version = "1.0.123", features = ["derive", "rc"], default-features = false }
 smallvec = "1.6.1"
 
-bcs = "0.1.2"
-omv-primitives = { version = "0.1.0", path = "../primitives" }
-omv-core = { path = "../core", version = "0.1.0" }
+omv-serialize = { version = "0.1.2", path = "../serialize", default-features = false }
+omv-primitives = { version = "0.1.0", path = "../primitives", default-features = false }
+omv-core = { version = "0.1.0", path = "../core", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "mirai-annotations",
+    "sha2/std",
+    "serde/std",
+    "omv-serialize/std",
+    "omv-primitives/std",
+    "omv-core/std",
+]

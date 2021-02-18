@@ -13,6 +13,7 @@ use omv_primitives::{
     identifier::Identifier,
     language_storage::{StructTag, TypeTag},
 };
+use alloc::{vec::Vec, boxed::Box, borrow::ToOwned};
 
 /// Defines normalized representations of Move types, fields, kinds, structs, functions, and
 /// modules. These representations are useful in situations that require require comparing

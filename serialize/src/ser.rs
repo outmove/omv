@@ -1,76 +1,10 @@
 // Copyright (c) The Diem Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::error::{Error, IoError, Result};
+use crate::error::{Error, Result};
 use serde::{ser, Serialize};
 use alloc::vec::Vec;
-
-#[cfg(feature = "std")]
-use std::io::Write;
-
-#[cfg(not(feature = "std"))]
-pub trait Write {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, IoError>;
-    fn flush(&mut self) -> Result<(), IoError>;
-    fn write_all(&mut self, mut buf: &[u8]) -> Result<(), IoError> {
-        while !buf.is_empty() {
-            match self.write(buf) {
-                Ok(0) => {
-                    return Err("failed to write whole buffer".into());
-                }
-                Ok(n) => buf = &buf[n..],
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
-    }
-}
-
-#[cfg(not(feature = "std"))]
-impl Write for &mut [u8] {
-    #[inline]
-    fn write(&mut self, data: &[u8]) -> Result<usize, IoError> {
-        let amt = core::cmp::min(data.len(), self.len());
-        let (a, b) = core::mem::replace(self, &mut []).split_at_mut(amt);
-        a.copy_from_slice(&data[..amt]);
-        *self = b;
-        Ok(amt)
-    }
-
-    #[inline]
-    fn write_all(&mut self, data: &[u8]) -> Result<(), IoError> {
-        if self.write(data)? == data.len() {
-            Ok(())
-        } else {
-            Err("failed to write whole buffer".into())
-        }
-    }
-
-    #[inline]
-    fn flush(&mut self) -> Result<(), IoError> {
-        Ok(())
-    }
-}
-
-#[cfg(not(feature = "std"))]
-impl Write for alloc::vec::Vec<u8> {
-    #[inline]
-    fn write(&mut self, buf: &[u8]) -> Result<usize, IoError> {
-        self.extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    #[inline]
-    fn write_all(&mut self, buf: &[u8]) -> Result<(), IoError> {
-        self.extend_from_slice(buf);
-        Ok(())
-    }
-
-    #[inline]
-    fn flush(&mut self) -> Result<(), IoError> {
-        Ok(())
-    }
-}
+use omv_io::Write;
 
 /// Serialize the given data structure as a `Vec<u8>` of BCS.
 ///
@@ -136,22 +70,15 @@ where
 struct WriteCounter(usize);
 
 impl Write for WriteCounter {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, IoError> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, omv_io::Error> {
         let len = buf.len();
         self.0 = self.0.checked_add(len).ok_or_else(|| {
-            #[cfg(feature = "std")]
-            {
-                std::io::Error::new(std::io::ErrorKind::Other, "WriteCounter reached max value")    
-            }
-            #[cfg(not(feature = "std"))]
-            {
-                IoError("WriteCounter reached max value".into())
-            }
+            omv_io::other_error("WriteCounter reached max value")
         })?;
         Ok(len)
     }
 
-    fn flush(&mut self) -> Result<(), IoError> {
+    fn flush(&mut self) -> Result<(), omv_io::Error> {
         Ok(())
     }
 }

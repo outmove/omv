@@ -3,10 +3,14 @@
 
 #![forbid(unsafe_code)]
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[macro_use]
+extern crate alloc;
+
+#[cfg(feature = "std")]
 #[macro_use]
 extern crate mirai_annotations;
-
-use std::fmt;
 
 pub mod access;
 pub mod check_bounds;
@@ -23,6 +27,8 @@ pub mod serializer;
 pub mod views;
 
 pub use file_format::CompiledModule;
+
+use core::fmt;
 
 /// Represents a kind of index -- useful for error messages.
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

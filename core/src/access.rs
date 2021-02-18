@@ -9,6 +9,7 @@ use omv_primitives::{
     identifier::{IdentStr, Identifier},
     language_storage::ModuleId,
 };
+use alloc::{vec::Vec, borrow::ToOwned};
 
 /// Represents accessors for a compiled module.
 ///
@@ -23,14 +24,21 @@ pub trait ModuleAccess: Sync {
 
     /// Returns the `ModuleHandle` for `self`.
     fn self_handle(&self) -> &ModuleHandle {
+        #[cfg(feature = "std")]
         assume_preconditions!(); // invariant
+
         let handle = self.module_handle_at(self.self_handle_idx());
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(
             handle.address.into_index() < self.as_module().as_inner().address_identifiers.len()
         ); // invariant
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(
             handle.name.into_index() < self.as_module().as_inner().identifiers.len()
         ); // invariant
+
         handle
     }
 
@@ -46,39 +54,55 @@ pub trait ModuleAccess: Sync {
 
     fn module_handle_at(&self, idx: ModuleHandleIndex) -> &ModuleHandle {
         let handle = &self.as_module().as_inner().module_handles[idx.into_index()];
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(
             handle.address.into_index() < self.as_module().as_inner().address_identifiers.len()
         ); // invariant
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(
             handle.name.into_index() < self.as_module().as_inner().identifiers.len()
         ); // invariant
+
         handle
     }
 
     fn struct_handle_at(&self, idx: StructHandleIndex) -> &StructHandle {
         let handle = &self.as_module().as_inner().struct_handles[idx.into_index()];
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(
             handle.module.into_index() < self.as_module().as_inner().module_handles.len()
         ); // invariant
+
         handle
     }
 
     fn function_handle_at(&self, idx: FunctionHandleIndex) -> &FunctionHandle {
         let handle = &self.as_module().as_inner().function_handles[idx.into_index()];
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(
             handle.parameters.into_index() < self.as_module().as_inner().signatures.len()
         ); // invariant
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(
             handle.return_.into_index() < self.as_module().as_inner().signatures.len()
         ); // invariant
+
         handle
     }
 
     fn field_handle_at(&self, idx: FieldHandleIndex) -> &FieldHandle {
         let handle = &self.as_module().as_inner().field_handles[idx.into_index()];
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(
             handle.owner.into_index() < self.as_module().as_inner().struct_defs.len()
         ); // invariant
+
         handle
     }
 
@@ -116,11 +140,16 @@ pub trait ModuleAccess: Sync {
 
     fn function_def_at(&self, idx: FunctionDefinitionIndex) -> &FunctionDefinition {
         let result = &self.as_module().as_inner().function_defs[idx.into_index()];
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(result.function.into_index() < self.function_handles().len()); // invariant
+
+        #[cfg(feature = "std")]
         assumed_postcondition!(match &result.code {
             Some(code) => code.locals.into_index() < self.signatures().len(),
             None => true,
         }); // invariant
+
         result
     }
 

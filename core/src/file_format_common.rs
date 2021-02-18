@@ -10,12 +10,12 @@
 //! We use LEB128 for integer compression. LEB128 is a representation from the DWARF3 spec,
 //! http://dwarfstd.org/Dwarf3Std.php or https://en.wikipedia.org/wiki/LEB128.
 //! It's used to compress mostly indexes into the main binary tables.
+
 use crate::file_format::Bytecode;
 use anyhow::{bail, Result};
-use std::{
-    io::{Cursor, Read},
-    mem::size_of,
-};
+use omv_io::{Cursor, Read};
+use core::mem::size_of;
+use alloc::{vec::Vec, string::ToString};
 
 /// Constant values for the binary format header.
 ///
@@ -80,7 +80,7 @@ pub const SIGNATURE_TOKEN_DEPTH_MAX: usize = 256;
 #[rustfmt::skip]
 #[allow(non_camel_case_types)]
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
 pub enum TableType {
     MODULE_HANDLES          = 0x1,
     STRUCT_HANDLES          = 0x2,
@@ -328,13 +328,13 @@ pub(crate) fn write_u128(binary: &mut BinaryData, value: u128) -> Result<()> {
 
 pub fn read_u8(cursor: &mut Cursor<&[u8]>) -> Result<u8> {
     let mut buf = [0; 1];
-    cursor.read_exact(&mut buf)?;
+    cursor.read_exact(&mut buf).map_err(anyhow::Error::msg)?;
     Ok(buf[0])
 }
 
 pub fn read_u32(cursor: &mut Cursor<&[u8]>) -> Result<u32> {
     let mut buf = [0; 4];
-    cursor.read_exact(&mut buf)?;
+    cursor.read_exact(&mut buf).map_err(anyhow::Error::msg)?;
     Ok(u32::from_le_bytes(buf))
 }
 
@@ -383,7 +383,7 @@ pub const VERSION_MAX: u32 = VERSION_2;
 pub(crate) mod versioned_data {
     use crate::{errors::*, file_format_common::*};
     use omv_primitives::vm_status::StatusCode;
-    use std::io::{Cursor, Read};
+    use omv_io::{Cursor, Read};
     pub struct VersionedBinary<'a> {
         version: u32,
         binary: &'a [u8],
@@ -504,7 +504,7 @@ pub(crate) mod versioned_data {
     }
 
     impl<'a> Read for VersionedCursor<'a> {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        fn read(&mut self, buf: &mut [u8]) -> core::result::Result<usize, omv_io::Error> {
             self.cursor.read(buf)
         }
     }

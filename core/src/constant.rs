@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::file_format::{Constant, SignatureToken};
-
 use omv_primitives::value::{MoveTypeLayout, MoveValue};
+use alloc::boxed::Box;
 
 fn sig_to_ty(sig: &SignatureToken) -> Option<MoveTypeLayout> {
     match sig {

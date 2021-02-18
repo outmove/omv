@@ -11,6 +11,7 @@ edition = "2018"
 
 [dependencies]
 serde = { version = "1.0.117", features = ["derive"], default-features = false }
+omv-io = { version = "0.1.0", path = "../io", default-features = false }
 
 [dev-dependencies]
 criterion = "0.3.3"
@@ -25,4 +26,5 @@ harness = false
 default = ["std"]
 std = [
     "serde/std",
+    "omv-io/std",
 ]
