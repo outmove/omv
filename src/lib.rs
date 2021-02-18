@@ -6,3 +6,4 @@ pub use omv_natives as natives;
 pub use omv_bytecode_verifier as bytecode_verifier;
 pub use omv_runtime as runtime;
 pub use omv_serialize as serialize;
+pub use omv_primitives as primitives;
