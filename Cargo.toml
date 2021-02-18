@@ -12,6 +12,7 @@ omv-types = { version = "0.1.0", path = "types", default-features = false }
 omv-natives = { version = "0.1.0", path = "natives", default-features = false }
 omv-bytecode-verifier = { version = "0.1.0", path = "bytecode-verifier", default-features = false }
 omv-runtime = { version = "0.1.0", path = "runtime", default-features = false }
+omv-serialize = { version = "0.1.0", path = "serialize", default-features = false }
 
 [features]
 default = ["std"]
@@ -21,6 +22,7 @@ std = [
     "omv-natives/std",
     "omv-bytecode-verifier/std",
     "omv-runtime/std",
+    "omv-serialize/std",
 ]
 
 [workspace]
