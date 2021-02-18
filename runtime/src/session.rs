@@ -14,6 +14,7 @@ use omv_primitives::{
 };
 use omv_types::gas_schedule::CostStrategy;
 use omv_core::errors::*;
+use alloc::vec::Vec;
 
 pub struct Session<'r, 'l, R> {
     pub(crate) runtime: &'l mut VMRuntime,

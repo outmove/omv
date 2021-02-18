@@ -7,6 +7,7 @@ use crate::{
     native_functions::FunctionContext,
     data_cache::{TransactionDataCache, RemoteCache},
 };
+#[cfg(feature = "std")]
 use fail::fail_point;
 use omv_primitives::{
     account_address::AccountAddress,
@@ -20,12 +21,13 @@ use omv_types::{
         self, GlobalValue, IntegerValue, Locals, Reference, Struct, StructRef, VMValueCast, Value,
     },
 };
-use std::{cmp::min, collections::VecDeque, fmt::Write, sync::Arc};
 use omv_core::{
     errors::*,
     file_format::{Bytecode, FunctionHandleIndex, FunctionInstantiationIndex},
     file_format_common::Opcodes,
 };
+use core::{cmp::min, fmt::Write};
+use alloc::{vec::Vec, collections::VecDeque, string::{String, ToString}, rc::Rc, borrow::ToOwned};
 
 macro_rules! debug_write {
     ($($toks: tt)*) => {
@@ -69,7 +71,7 @@ impl<L: LogContext> Interpreter<L> {
     /// Entrypoint into the interpreter. All external calls need to be routed through this
     /// function.
     pub(crate) fn entrypoint<'a, 'b, R: RemoteCache>(
-        function: Arc<Function>,
+        function: Rc<Function>,
         ty_args: Vec<Type>,
         args: Vec<Value>,
         data_store: &'a mut TransactionDataCache<'b, R>,
@@ -99,7 +101,7 @@ impl<L: LogContext> Interpreter<L> {
         loader: &'a mut Loader,
         data_store: &'a mut TransactionDataCache<'b, R>,
         cost_strategy: &'a mut CostStrategy,
-        function: Arc<Function>,
+        function: Rc<Function>,
         ty_args: Vec<Type>,
         args: Vec<Value>,
     ) -> VMResult<()> {
@@ -121,7 +123,7 @@ impl<L: LogContext> Interpreter<L> {
         loader: &'a mut Loader,
         data_store: &'a mut TransactionDataCache<'b, R>,
         cost_strategy: &'a mut CostStrategy,
-        function: Arc<Function>,
+        function: Rc<Function>,
         ty_args: Vec<Type>,
         args: Vec<Value>,
     ) -> VMResult<()> {
@@ -221,7 +223,7 @@ impl<L: LogContext> Interpreter<L> {
     ///
     /// Native functions do not push a frame at the moment and as such errors from a native
     /// function are incorrectly attributed to the caller.
-    fn make_call_frame(&mut self, func: Arc<Function>, ty_args: Vec<Type>) -> VMResult<Frame> {
+    fn make_call_frame(&mut self, func: Rc<Function>, ty_args: Vec<Type>) -> VMResult<Frame> {
         let mut locals = Locals::new(func.local_count());
         let arg_count = func.arg_count();
         for i in 0..arg_count {
@@ -241,7 +243,7 @@ impl<L: LogContext> Interpreter<L> {
         resolver: &'a mut Resolver<'a>,
         data_store: &'a mut TransactionDataCache<'b, R>,
         cost_strategy: &'a mut CostStrategy,
-        function: Arc<Function>,
+        function: Rc<Function>,
         ty_args: Vec<Type>,
     ) -> VMResult<()> {
         // Note: refactor if native functions push a frame on the stack
@@ -269,7 +271,7 @@ impl<L: LogContext> Interpreter<L> {
         resolver: &'a mut Resolver<'a>,
         data_store: &'a mut TransactionDataCache<'b, R>,
         cost_strategy: &'a mut CostStrategy,
-        function: Arc<Function>,
+        function: Rc<Function>,
         ty_args: Vec<Type>,
     ) -> PartialVMResult<()> {
         let mut arguments = VecDeque::new();
@@ -635,7 +637,7 @@ impl CallStack {
     }
 
     /// Push a `Frame` on the call stack.
-    fn push(&mut self, frame: Frame) -> ::std::result::Result<(), Frame> {
+    fn push(&mut self, frame: Frame) -> ::core::result::Result<(), Frame> {
         if self.0.len() < CALL_STACK_SIZE_LIMIT {
             self.0.push(frame);
             Ok(())
@@ -661,7 +663,7 @@ impl CallStack {
 struct Frame {
     pc: u16,
     locals: Locals,
-    function: Arc<Function>,
+    function: Rc<Function>,
     ty_args: Vec<Type>,
 }
 
@@ -677,7 +679,7 @@ impl Frame {
     /// Create a new `Frame` given a `Function` and the function `Locals`.
     ///
     /// The locals must be loaded before calling this.
-    fn new(function: Arc<Function>, ty_args: Vec<Type>, locals: Locals) -> Self {
+    fn new(function: Rc<Function>, ty_args: Vec<Type>, locals: Locals) -> Self {
         Frame {
             pc: 0,
             locals,
@@ -711,6 +713,7 @@ impl Frame {
         let code = self.function.code();
         loop {
             for instruction in &code[self.pc as usize..] {
+                #[cfg(feature = "std")]
                 fail_point!("omv_core::interpreter_loop", |_| {
                     Err(
                         PartialVMError::new(StatusCode::VERIFIER_INVARIANT_VIOLATION).with_message(

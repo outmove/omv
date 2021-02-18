@@ -5,7 +5,7 @@ use mirai_annotations::*;
 use rand::{rngs::OsRng, Rng};
 use serde::{de, ser};
 use core::fmt;
-use alloc::str::FromStr;
+use alloc::{string::String, vec::Vec, str::FromStr};
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, PartialOrd, Ord)]
 pub struct HashValue {
@@ -109,13 +109,13 @@ impl HashValue {
 
     /// Parse a given hex string to a hash value.
     pub fn from_hex(hex_str: &str) -> Result<Self> {
-        Self::from_slice(hex::decode(hex_str)?.as_slice())
+        Self::from_slice(hex::decode(hex_str).map_err(anyhow::Error::msg)?.as_slice())
     }
 }
 
 // TODO(#1307)
 impl ser::Serialize for HashValue {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> core::result::Result<S::Ok, S::Error>
     where
         S: ser::Serializer,
     {
@@ -132,7 +132,7 @@ impl ser::Serialize for HashValue {
 }
 
 impl<'de> de::Deserialize<'de> for HashValue {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
     where
         D: de::Deserializer<'de>,
     {
@@ -164,7 +164,7 @@ impl AsRef<[u8; HashValue::LENGTH]> for HashValue {
     }
 }
 
-impl std::ops::Index<usize> for HashValue {
+impl core::ops::Index<usize> for HashValue {
     type Output = u8;
 
     fn index(&self, s: usize) -> &u8 {
@@ -221,7 +221,7 @@ impl FromStr for HashValue {
 pub struct HashValueBitIterator<'a> {
     /// The reference to the bytes that represent the `HashValue`.
     hash_bytes: &'a [u8],
-    pos: std::ops::Range<usize>,
+    pos: core::ops::Range<usize>,
     // invariant hash_bytes.len() == HashValue::LENGTH;
     // invariant pos.end == hash_bytes.len() * 8;
 }
@@ -237,16 +237,22 @@ impl<'a> HashValueBitIterator<'a> {
 
     /// Returns the `index`-th bit in the bytes.
     fn get_bit(&self, index: usize) -> bool {
+        #[cfg(feature = "std")]
         assume!(index < self.pos.end); // assumed precondition
+
+        #[cfg(feature = "std")]
         assume!(self.hash_bytes.len() == HashValue::LENGTH); // invariant
+
+        #[cfg(feature = "std")]
         assume!(self.pos.end == self.hash_bytes.len() * 8); // invariant
+        
         let pos = index / 8;
         let bit = 7 - index % 8;
         (self.hash_bytes[pos] >> bit) & 1 != 0
     }
 }
 
-impl<'a> std::iter::Iterator for HashValueBitIterator<'a> {
+impl<'a> core::iter::Iterator for HashValueBitIterator<'a> {
     type Item = bool;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -258,10 +264,10 @@ impl<'a> std::iter::Iterator for HashValueBitIterator<'a> {
     }
 }
 
-impl<'a> std::iter::DoubleEndedIterator for HashValueBitIterator<'a> {
+impl<'a> core::iter::DoubleEndedIterator for HashValueBitIterator<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.pos.next_back().map(|x| self.get_bit(x))
     }
 }
 
-impl<'a> std::iter::ExactSizeIterator for HashValueBitIterator<'a> {}
+impl<'a> core::iter::ExactSizeIterator for HashValueBitIterator<'a> {}

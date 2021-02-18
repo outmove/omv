@@ -15,8 +15,8 @@ use omv_types::{
     loaded_data::runtime_types::Type,
     values::{GlobalValue, GlobalValueEffect, Value},
 };
-use std::collections::btree_map::BTreeMap;
 use omv_core::errors::*;
+use alloc::{vec::Vec, collections::BTreeMap, borrow::ToOwned};
 
 /// Trait for the Move VM to abstract storage operations.
 ///

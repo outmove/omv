@@ -25,6 +25,7 @@ use omv_core::{
     errors::{verification_error, Location, PartialVMError, PartialVMResult, VMResult},
     normalized, CompiledModule, IndexKind,
 };
+use alloc::vec::Vec;
 
 /// An instantiation of the MoveVM.
 pub(crate) struct VMRuntime {

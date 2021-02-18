@@ -21,7 +21,6 @@ use omv_primitives::{
 use omv_types::{
     loaded_data::runtime_types::{StructType, Type},
 };
-use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
 use omv_core::{
     access::{ModuleAccess, ScriptAccess},
     errors::{verification_error, Location, PartialVMError, PartialVMResult, VMResult},
@@ -34,28 +33,30 @@ use omv_core::{
     IndexKind,
 };
 use sha3::{Sha3_256, Digest};
+use core::{fmt::Debug, hash::Hash};
+use alloc::{boxed::Box, vec::Vec, string::{String, ToString}, collections::BTreeMap, rc::Rc, borrow::ToOwned};
 
 // A simple cache that offers both a HashMap and a Vector lookup.
 // Values are forced into a `Arc` so they can be used from multiple thread.
 // Access to this cache is always under a `Mutex`.
 struct BinaryCache<K, V> {
-    id_map: HashMap<K, usize>,
-    binaries: Vec<Arc<V>>,
+    id_map: BTreeMap<K, usize>,
+    binaries: Vec<Rc<V>>,
 }
 
 impl<K, V> BinaryCache<K, V>
 where
-    K: Eq + Hash,
+    K: Eq + Hash + Ord,
 {
     fn new() -> Self {
         Self {
-            id_map: HashMap::new(),
+            id_map: BTreeMap::new(),
             binaries: vec![],
         }
     }
 
-    fn insert(&mut self, key: K, binary: V) -> &Arc<V> {
-        self.binaries.push(Arc::new(binary));
+    fn insert(&mut self, key: K, binary: V) -> &Rc<V> {
+        self.binaries.push(Rc::new(binary));
         let idx = self.binaries.len() - 1;
         self.id_map.insert(key, idx);
         self.binaries
@@ -63,7 +64,7 @@ where
             .expect("BinaryCache: last() after push() impossible failure")
     }
 
-    fn get(&self, key: &K) -> Option<&Arc<V>> {
+    fn get(&self, key: &K) -> Option<&Rc<V>> {
         self.id_map
             .get(&key)
             .and_then(|idx| self.binaries.get(*idx))
@@ -84,7 +85,7 @@ impl ScriptCache {
         }
     }
 
-    fn get(&self, hash: &HashValue) -> Option<(Arc<Function>, Vec<Type>)> {
+    fn get(&self, hash: &HashValue) -> Option<(Rc<Function>, Vec<Type>)> {
         self.scripts
             .get(hash)
             .map(|script| (script.entry_point(), script.parameter_tys.clone()))
@@ -94,7 +95,7 @@ impl ScriptCache {
         &mut self,
         hash: HashValue,
         script: Script,
-    ) -> PartialVMResult<(Arc<Function>, Vec<Type>)> {
+    ) -> PartialVMResult<(Rc<Function>, Vec<Type>)> {
         match self.get(&hash) {
             Some(cached) => Ok(cached),
             None => {
@@ -111,8 +112,8 @@ impl ScriptCache {
 // All accesses to the ModuleCache are under lock (exclusive).
 pub struct ModuleCache {
     modules: BinaryCache<ModuleId, Module>,
-    structs: Vec<Arc<StructType>>,
-    functions: Vec<Arc<Function>>,
+    structs: Vec<Rc<StructType>>,
+    functions: Vec<Rc<Function>>,
 }
 
 impl ModuleCache {
@@ -130,18 +131,18 @@ impl ModuleCache {
 
     // Retrieve a module by `ModuleId`. The module may have not been loaded yet in which
     // case `None` is returned
-    fn module_at(&self, id: &ModuleId) -> Option<Arc<Module>> {
-        self.modules.get(id).map(|module| Arc::clone(module))
+    fn module_at(&self, id: &ModuleId) -> Option<Rc<Module>> {
+        self.modules.get(id).map(|module| Rc::clone(module))
     }
 
     // Retrieve a function by index
-    fn function_at(&self, idx: usize) -> Arc<Function> {
-        Arc::clone(&self.functions[idx])
+    fn function_at(&self, idx: usize) -> Rc<Function> {
+        Rc::clone(&self.functions[idx])
     }
 
     // Retrieve a struct by index
-    fn struct_at(&self, idx: usize) -> Arc<StructType> {
-        Arc::clone(&self.structs[idx])
+    fn struct_at(&self, idx: usize) -> Rc<StructType> {
+        Rc::clone(&self.structs[idx])
     }
 
     //
@@ -154,7 +155,7 @@ impl ModuleCache {
         id: ModuleId,
         mut module: CompiledModule,
         log_context: &impl LogContext,
-    ) -> VMResult<Arc<Module>> {
+    ) -> VMResult<Rc<Module>> {
         if let Some(module) = self.module_at(&id) {
             return Ok(module);
         }
@@ -163,7 +164,7 @@ impl ModuleCache {
         // leave a clean state
         self.add_module(&mut module, log_context)?;
         match Module::new(module, self) {
-            Ok(module) => Ok(Arc::clone(self.modules.insert(id, module))),
+            Ok(module) => Ok(Rc::clone(self.modules.insert(id, module))),
             Err((err, module)) => {
                 // remove all structs and functions that have been pushed
                 let strut_def_count = module.struct_defs().len();
@@ -184,7 +185,7 @@ impl ModuleCache {
         let starting_idx = self.structs.len();
         for (idx, struct_def) in module.struct_defs().iter().enumerate() {
             let st = self.make_struct_type(module, struct_def, StructDefinitionIndex(idx as u16));
-            self.structs.push(Arc::new(st));
+            self.structs.push(Rc::new(st));
         }
         self.load_field_types(module, starting_idx, log_context)
             .map_err(|err| {
@@ -195,7 +196,7 @@ impl ModuleCache {
         for (idx, func) in module.function_defs().iter().enumerate() {
             let findex = FunctionDefinitionIndex(idx as TableIndex);
             let function = Function::new(findex, func, module);
-            self.functions.push(Arc::new(function));
+            self.functions.push(Rc::new(function));
         }
         Ok(())
     }
@@ -237,7 +238,10 @@ impl ModuleCache {
             let mut field_tys = vec![];
             for field in fields {
                 let ty = self.make_type_while_loading(module, &field.signature.0)?;
+
+                #[cfg(feature = "std")]
                 assume!(field_tys.len() < usize::max_value());
+
                 field_tys.push(ty);
             }
 
@@ -245,7 +249,7 @@ impl ModuleCache {
         }
         let mut struct_idx = starting_idx;
         for fields in field_types {
-            match Arc::get_mut(&mut self.structs[struct_idx]) {
+            match Rc::get_mut(&mut self.structs[struct_idx]) {
                 Some(struct_type) => struct_type.fields = fields,
                 None => {
                     // we have pending references to the `Arc` which is impossible,
@@ -259,7 +263,7 @@ impl ModuleCache {
                     );
                     let mut struct_type = (*self.structs[struct_idx]).clone();
                     struct_type.fields = fields;
-                    self.structs[struct_idx] = Arc::new(struct_type);
+                    self.structs[struct_idx] = Rc::new(struct_type);
                 }
             }
             struct_idx += 1;
@@ -373,13 +377,13 @@ impl ModuleCache {
         &self,
         struct_name: &IdentStr,
         module_id: &ModuleId,
-    ) -> PartialVMResult<(usize, Arc<StructType>)> {
+    ) -> PartialVMResult<(usize, Rc<StructType>)> {
         match self
             .modules
             .get(module_id)
             .and_then(|module| module.struct_map.get(struct_name))
         {
-            Some(struct_idx) => Ok((*struct_idx, Arc::clone(&self.structs[*struct_idx]))),
+            Some(struct_idx) => Ok((*struct_idx, Rc::clone(&self.structs[*struct_idx]))),
             None => Err(
                 PartialVMError::new(StatusCode::TYPE_RESOLUTION_FAILURE).with_message(format!(
                     "Cannot find {:?}::{:?} in cache",
@@ -454,7 +458,7 @@ impl Loader {
         ty_args: &[TypeTag],
         data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
-    ) -> VMResult<(Arc<Function>, Vec<Type>, Vec<Type>)> {
+    ) -> VMResult<(Rc<Function>, Vec<Type>, Vec<Type>)> {
         // retrieve or load the script
         let mut hash_value_raw = [0u8; 32];
         hash_value_raw.copy_from_slice(Sha3_256::digest(script_blob).as_slice());
@@ -543,7 +547,7 @@ impl Loader {
     fn verify_script_dependencies(
         &self,
         script: &CompiledScript,
-        dependencies: Vec<Arc<Module>>,
+        dependencies: Vec<Rc<Module>>,
     ) -> VMResult<()> {
         let mut deps = vec![];
         for dep in &dependencies {
@@ -567,7 +571,7 @@ impl Loader {
         is_script_execution: bool,
         data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
-    ) -> VMResult<(Arc<Function>, Vec<Type>, Vec<Type>)> {
+    ) -> VMResult<(Rc<Function>, Vec<Type>, Vec<Type>)> {
         let module = self.load_module_verify_not_missing(module_id, data_store, log_context)?;
         let idx = self
             .module_cache
@@ -655,7 +659,7 @@ impl Loader {
     fn verify_module_dependencies(
         &self,
         module: &CompiledModule,
-        imm_dependencies: Vec<Arc<Module>>,
+        imm_dependencies: Vec<Rc<Module>>,
     ) -> VMResult<()> {
         let imm_deps: Vec<_> = imm_dependencies
             .iter()
@@ -774,7 +778,7 @@ impl Loader {
         data_store: &mut TransactionDataCache<R>,
         verify_module_is_not_missing: bool,
         log_context: &impl LogContext,
-    ) -> VMResult<Arc<Module>> {
+    ) -> VMResult<Rc<Module>> {
         // kept private to `load_module` to prevent verification errors from leaking
         // and not being marked as invariant violations
         fn deserialize_and_verify_module<R: RemoteCache>(
@@ -821,7 +825,7 @@ impl Loader {
         id: &ModuleId,
         data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
-    ) -> VMResult<Arc<Module>> {
+    ) -> VMResult<Rc<Module>> {
         self.load_module(id, data_store, true, log_context)
     }
 
@@ -831,7 +835,7 @@ impl Loader {
         id: &ModuleId,
         data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
-    ) -> VMResult<Arc<Module>> {
+    ) -> VMResult<Rc<Module>> {
         self.load_module(id, data_store, false, log_context)
     }
 
@@ -841,7 +845,7 @@ impl Loader {
         deps: Vec<ModuleId>,
         data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
-    ) -> VMResult<Vec<Arc<Module>>> {
+    ) -> VMResult<Vec<Rc<Module>>> {
         deps.into_iter()
             .map(|dep| self.load_module_verify_not_missing(&dep, data_store, log_context))
             .collect()
@@ -853,7 +857,7 @@ impl Loader {
         deps: Vec<ModuleId>,
         data_store: &mut TransactionDataCache<R>,
         log_context: &impl LogContext,
-    ) -> VMResult<Vec<Arc<Module>>> {
+    ) -> VMResult<Vec<Rc<Module>>> {
         deps.into_iter()
             .map(|dep| self.load_module_expect_not_missing(&dep, data_store, log_context))
             .collect()
@@ -885,12 +889,12 @@ impl Loader {
     // Internal helpers
     //
 
-    fn function_at(&self, idx: usize) -> Arc<Function> {
+    fn function_at(&self, idx: usize) -> Rc<Function> {
         self.module_cache.function_at(idx)
     }
 
-    fn get_module(&self, idx: &ModuleId) -> Arc<Module> {
-        Arc::clone(
+    fn get_module(&self, idx: &ModuleId) -> Rc<Module> {
+        Rc::clone(
             self.module_cache
                 .modules
                 .get(idx)
@@ -898,8 +902,8 @@ impl Loader {
         )
     }
 
-    fn get_script(&self, hash: &HashValue) -> Arc<Script> {
-        Arc::clone(
+    fn get_script(&self, hash: &HashValue) -> Rc<Script> {
+        Rc::clone(
             self.scripts
                 .scripts
                 .get(hash)
@@ -934,8 +938,8 @@ impl Loader {
 
 // A simple wrapper for a `Module` or a `Script` in the `Resolver`
 enum BinaryType {
-    Module(Arc<Module>),
-    Script(Arc<Script>),
+    Module(Rc<Module>),
+    Script(Rc<Script>),
 }
 
 // A Resolver is a simple and small structure allocated on the stack and used by the
@@ -947,12 +951,12 @@ pub(crate) struct Resolver<'a> {
 }
 
 impl<'a> Resolver<'a> {
-    fn for_module(loader: &'a mut Loader, module: Arc<Module>) -> Self {
+    fn for_module(loader: &'a mut Loader, module: Rc<Module>) -> Self {
         let binary = BinaryType::Module(module);
         Self { loader, binary }
     }
 
-    fn for_script(loader: &'a mut Loader, script: Arc<Script>) -> Self {
+    fn for_script(loader: &'a mut Loader, script: Rc<Script>) -> Self {
         let binary = BinaryType::Script(script);
         Self { loader, binary }
     }
@@ -972,7 +976,7 @@ impl<'a> Resolver<'a> {
     // Function resolution
     //
 
-    pub(crate) fn function_from_handle(&self, idx: FunctionHandleIndex) -> Arc<Function> {
+    pub(crate) fn function_from_handle(&self, idx: FunctionHandleIndex) -> Rc<Function> {
         let idx = match &self.binary {
             BinaryType::Module(module) => module.function_at(idx.0),
             BinaryType::Script(script) => script.function_at(idx.0),
@@ -983,7 +987,7 @@ impl<'a> Resolver<'a> {
     pub(crate) fn function_from_instantiation(
         &self,
         idx: FunctionInstantiationIndex,
-    ) -> Arc<Function> {
+    ) -> Rc<Function> {
         let func_inst = match &self.binary {
             BinaryType::Module(module) => module.function_instantiation_at(idx.0),
             BinaryType::Script(script) => script.function_instantiation_at(idx.0),
@@ -1125,10 +1129,10 @@ pub(crate) struct Module {
 
     // function name to index into the Loader function list.
     // This allows a direct access from function name to `Function`
-    function_map: HashMap<Identifier, usize>,
+    function_map: BTreeMap<Identifier, usize>,
     // struct name to index into the Loader type list
     // This allows a direct access from struct name to `Struct`
-    struct_map: HashMap<Identifier, usize>,
+    struct_map: BTreeMap<Identifier, usize>,
 }
 
 impl Module {
@@ -1145,8 +1149,8 @@ impl Module {
         let mut function_instantiations = vec![];
         let mut field_handles = vec![];
         let mut field_instantiations: Vec<FieldInstantiation> = vec![];
-        let mut function_map = HashMap::new();
-        let mut struct_map = HashMap::new();
+        let mut function_map = BTreeMap::new();
+        let mut struct_map = BTreeMap::new();
 
         let mut create = || {
             for struct_handle in module.struct_handles() {
@@ -1335,7 +1339,7 @@ struct Script {
     function_instantiations: Vec<FunctionInstantiation>,
 
     // entry point
-    main: Arc<Function>,
+    main: Rc<Function>,
 
     // parameters of main
     parameter_tys: Vec<Type>,
@@ -1416,7 +1420,7 @@ impl Script {
         // TODO: main does not have a name. Revisit.
         let name = Identifier::new("main").unwrap();
         let native = None; // Script entries cannot be native
-        let main: Arc<Function> = Arc::new(Function {
+        let main: Rc<Function> = Rc::new(Function {
             index: FunctionDefinitionIndex(0),
             code,
             parameters,
@@ -1438,7 +1442,7 @@ impl Script {
         })
     }
 
-    fn entry_point(&self) -> Arc<Function> {
+    fn entry_point(&self) -> Rc<Function> {
         self.main.clone()
     }
 
@@ -1663,13 +1667,13 @@ impl StructInfo {
 }
 
 pub(crate) struct TypeCache {
-    structs: HashMap<usize, HashMap<Vec<Type>, StructInfo>>,
+    structs: BTreeMap<usize, BTreeMap<Vec<Type>, StructInfo>>,
 }
 
 impl TypeCache {
     fn new() -> Self {
         Self {
-            structs: HashMap::new(),
+            structs: BTreeMap::new(),
         }
     }
 }
@@ -1701,7 +1705,7 @@ impl Loader {
         self.type_cache
             .structs
             .entry(gidx)
-            .or_insert_with(HashMap::new)
+            .or_insert_with(BTreeMap::new)
             .entry(ty_args.to_vec())
             .or_insert_with(StructInfo::new)
             .struct_tag = Some(struct_tag.clone());
@@ -1760,7 +1764,7 @@ impl Loader {
         self.type_cache
             .structs
             .entry(gidx)
-            .or_insert_with(HashMap::new)
+            .or_insert_with(BTreeMap::new)
             .entry(ty_args.to_vec())
             .or_insert_with(StructInfo::new)
             .struct_layout = Some(struct_layout.clone());

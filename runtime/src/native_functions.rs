@@ -16,8 +16,9 @@ use omv_types::{
     natives::function::{NativeContext, NativeResult},
     values::Value,
 };
-use std::{collections::VecDeque, fmt::Write};
 use omv_core::errors::PartialVMResult;
+use core::fmt::Write;
+use alloc::{vec::Vec, collections::VecDeque};
 
 // The set of native functions the VM supports.
 // The functions can line in any crate linked in but the VM declares them here.

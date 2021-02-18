@@ -3,6 +3,7 @@
 
 use omv_primitives::vm_status::{StatusCode, StatusType};
 use omv_core::errors::{PartialVMError, VMError};
+use alloc::string::{String, ToString};
 
 // Trait used by the VM to log interesting data.
 // Clients are responsible for the implementation of alert.
