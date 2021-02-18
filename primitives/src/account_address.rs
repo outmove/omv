@@ -43,7 +43,7 @@ impl AccountAddress {
         self.0.to_vec()
     }
 
-    pub fn to_u8(self) -> [u8; Self::LENGTH] {
+    pub const fn to_u8(self) -> [u8; Self::LENGTH] {
         self.0
     }
 
